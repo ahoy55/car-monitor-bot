@@ -14,7 +14,15 @@ class Config:
     TYPE_2_URL = os.getenv("TYPE_2_URL", "")
     TYPE_4_URL = os.getenv("TYPE_4_URL", "")
 
-    DB_PATH = os.getenv("DB_PATH", "data/cars.db")
+    # DB
+    DB_HOST = os.getenv("DB_HOST", "")
+    DB_PORT = os.getenv("DB_PORT", "")
+    DB_NAME = os.getenv("DB_NAME", "")
+    DB_USER = os.getenv("DB_USER", "")
+    DB_PASSWORD = os.getenv("DB_PASSWORD", "")
+    DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
+
+    # Scraper
     SCRAPE_INTERVAL = 15 if IS_DEBUG else int(os.getenv("SCRAPE_INTERVAL", 3600))
     SCRAPE_NEW_INTERVAL = 5 if IS_DEBUG else int(os.getenv("SCRAPE_NEW_INTERVAL", 600))
 

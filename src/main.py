@@ -112,7 +112,7 @@ class CarMonitorApp:
         await self.initialize()
 
         # Запускаем сразу
-        await self.scrape_pages_and_save()
+        # await self.scrape_pages_and_save()
         await self.scrape_new_and_save()
 
         # Планировщик
@@ -133,7 +133,7 @@ class CarMonitorApp:
 
         try:
             new_scheduler.start()
-            pages_scheduler.start()
+            # pages_scheduler.start()
             logger.info(f"🚗 Мониторинг запущен. Интервал: для обновления {Config.SCRAPE_INTERVAL} секунд, "
                         f"для новых {Config.SCRAPE_NEW_INTERVAL}")
 
@@ -152,15 +152,16 @@ class CarMonitorApp:
 
 async def main():
     # Настройка логирования
+
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('logs/monitor.log'),
+            # logging.FileHandler('logs/monitor.log', encoding='utf-8'),
             logging.StreamHandler()
         ]
     )
-
+    logging.getLogger('apscheduler').setLevel(logging.WARNING)
     app = CarMonitorApp()
     await app.run()
 

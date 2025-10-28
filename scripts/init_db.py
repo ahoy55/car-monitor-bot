@@ -3,7 +3,6 @@
 Скрипт инициализации базы данных
 """
 
-import os
 import sys
 import logging
 from pathlib import Path
@@ -22,18 +21,25 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 def init_database():
     """Инициализация базы данных"""
 
     # Создаем директорию для базы данных, если её нет
-    db_path = Path(Config.DB_PATH)
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_path = Config.DATABASE_URL
 
     logger.info(f"Инициализация базы данных: {db_path}")
 
     try:
         # Создаем движок и все таблицы
-        engine = create_engine(f"sqlite:///{db_path}")
+        engine = create_engine(
+            Config.DATABASE_URL,
+            # Дополнительные настройки для стабильности
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+            echo=Config.IS_DEBUG  # Показывает SQL запросы в консоли при DEBUG
+        )
         Base.metadata.create_all(engine)
 
         logger.info("✅ Таблицы успешно созданы:")
@@ -71,6 +77,7 @@ def init_database():
     except Exception as e:
         logger.error(f"❌ Ошибка инициализации базы данных: {e}")
         sys.exit(1)
+
 
 if __name__ == "__main__":
     print("🚗 Инициализация базы данных мониторинга цен")
