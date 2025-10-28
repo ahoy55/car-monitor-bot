@@ -1,0 +1,31 @@
+import os
+from dataclasses import dataclass
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+@dataclass
+class Config:
+    IS_DEBUG = False
+    DEBUG_DIR = "data"
+
+    BASE_URL = os.getenv("BASE_URL", "")
+    TYPE_2_URL = os.getenv("TYPE_2_URL", "")
+    TYPE_4_URL = os.getenv("TYPE_4_URL", "")
+
+    DB_PATH = os.getenv("DB_PATH", "data/cars.db")
+    SCRAPE_INTERVAL = 15 if IS_DEBUG else int(os.getenv("SCRAPE_INTERVAL", 3600))
+    SCRAPE_NEW_INTERVAL = 5 if IS_DEBUG else int(os.getenv("SCRAPE_NEW_INTERVAL", 600))
+
+    # Telegram Bot
+    TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+    ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
+
+    # Уведомления
+    NOTIFY_PRICE_DROP_PERCENT = int(os.getenv("NOTIFY_PRICE_DROP_PERCENT", 5))
+    NOTIFY_NEW_CARS = os.getenv("NOTIFY_NEW_CARS", "true").lower() == "true"
+
+    HEADERS = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    }

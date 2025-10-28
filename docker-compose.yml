@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  car-monitor:
+    build: .
+    container_name: car_price_monitor
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    restart: unless-stopped
+    networks:
+      - car-network
+
+networks:
+  car-network:
+    driver: bridge
