@@ -7,7 +7,9 @@ load_dotenv()
 
 @dataclass
 class Config:
-    IS_DEBUG = False
+
+    # Debug
+    IS_DEBUG = os.getenv("IS_DEBUG", "false").lower() == "true"
 
     # Sources
     SOURCES_PATH = os.getenv("SOURCES_PATH", "")
@@ -21,8 +23,10 @@ class Config:
     DATABASE_URL = f'postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}'
 
     # Scraper
-    SCRAPE_INTERVAL = 15 if IS_DEBUG else int(os.getenv("SCRAPE_INTERVAL", 3600))
-    SCRAPE_NEW_INTERVAL = 5 if IS_DEBUG else int(os.getenv("SCRAPE_NEW_INTERVAL", 600))
+    UPDATE_CARS_HOURS = int(os.getenv("UPDATE_CARS_HOURS", 10))
+    NEW_CARS_HOUR_START = 0 if IS_DEBUG else int(os.getenv("NEW_CARS_HOUR_START", 10))
+    NEW_CARS_HOUR_END = 23 if IS_DEBUG else int(os.getenv("NEW_CARS_HOUR_END", 18))
+    NEW_CARS_INTERVAL_SECONDS = 5 if IS_DEBUG else int(os.getenv("NEW_CARS_INTERVAL_SECONDS", 59))
 
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

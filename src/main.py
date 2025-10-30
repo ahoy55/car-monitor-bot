@@ -23,15 +23,9 @@ class CarMonitorApp:
         self.db = Database()
         self.db_session = self.db.Session
 
-    async def get_tg_bot(self):
-        bot = TelegramBot(self.db_session)
-        await bot.initialize()
-        return bot.get_bot()
-
     async def run(self):
         logging_helper.initialize()
-        telegram_bot = await self.get_tg_bot()
-        schedule_manager = ScheduleManager(telegram_bot)
+        schedule_manager = ScheduleManager()
         await schedule_manager.run()
 
 

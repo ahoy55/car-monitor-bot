@@ -27,8 +27,7 @@ class Database:
             # Дополнительные настройки для стабильности
             pool_size=5,
             max_overflow=10,
-            pool_pre_ping=True,
-            echo=Config.IS_DEBUG  # Показывает SQL запросы в консоли при DEBUG
+            pool_pre_ping=True
         )
 
         # Тестируем подключение
@@ -146,23 +145,5 @@ class Database:
                 "total_cars": total_cars,
                 "total_price_history": total_price_history
             }
-        finally:
-            session.close()
-
-    def clear_test_data(self):
-        """Очистка тестовых данных (только для debug режима)"""
-        if not Config.IS_DEBUG:
-            return
-
-        session = self.Session()
-        try:
-            # Для PostgreSQL лучше использовать truncate для сброса sequence
-            session.execute("TRUNCATE TABLE price_history RESTART IDENTITY CASCADE;")
-            session.execute("TRUNCATE TABLE cars RESTART IDENTITY CASCADE;")
-            session.commit()
-            logging.info("Test data cleared")
-        except Exception as e:
-            session.rollback()
-            logging.error(f"Error clearing test data: {e}")
         finally:
             session.close()

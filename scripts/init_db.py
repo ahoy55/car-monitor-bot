@@ -40,7 +40,7 @@ class DbInitializer():
             pool_size=5,
             max_overflow=10,
             pool_pre_ping=True,
-            echo=Config.IS_DEBUG  # Показывает SQL запросы в консоли при DEBUG
+            echo=True  # Показывает SQL запросы в консоли при DEBUG
         )
         session_maker = sessionmaker(bind=self.engine)
         self.session = session_maker()

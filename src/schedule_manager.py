@@ -7,16 +7,24 @@ from apscheduler.triggers.cron import CronTrigger
 from database import Database
 from models import Source
 from source_manager import SourceManager
+from config import Config
+from bot.bot import TelegramBot
 
 logger = logging.getLogger(__name__)
 
 
+async def _keep_alive():
+    """Бесконечный цикл для поддержания работы"""
+    while True:
+        await asyncio.sleep(1)
+
+
 class ScheduleManager:
 
-    def __init__(self, bot):
+    def __init__(self):
         self.db = Database()
         self.db_session = self.db.Session
-        self.bot = bot
+        self.bot = TelegramBot(self.db_session)
         self.update_cars_scheduler = AsyncIOScheduler()
         self.new_cars_scheduler = AsyncIOScheduler()
         self.source_managers = self._get_source_managers()
@@ -29,7 +37,7 @@ class ScheduleManager:
             map(
                 lambda source: SourceManager(
                     source=source,
-                    bot=self.bot,
+                    bot=self.bot.get_bot(),
                     db_session=self.db_session
                 ),
                 source_list
@@ -49,21 +57,29 @@ class ScheduleManager:
         """Запускает планировщик на 00:00 для обновления цен на машины"""
         self.update_cars_scheduler.add_job(
             func=self.process_cars_update,
-            trigger=CronTrigger(hour=0, minute=0),
+            trigger=CronTrigger(hour=Config.UPDATE_CARS_HOURS, minute=0),
         )
 
-        # """Запускает планировщик с 8:00 до 19:59 для поиска новых машин"""
+        """Запускает планировщик с 8:00 до 19:59 для поиска новых машин"""
         self.new_cars_scheduler.add_job(
             func=self.process_cars_new,
-            trigger=CronTrigger(hour='10-18', minute='*'),
+            trigger=CronTrigger(
+                hour=f'{Config.NEW_CARS_HOUR_START}-{Config.NEW_CARS_HOUR_END}',
+                second=f'*/{Config.NEW_CARS_INTERVAL_SECONDS}'
+            ),
         )
 
         try:
             self.update_cars_scheduler.start()
             self.new_cars_scheduler.start()
 
-            while True:
-                await asyncio.sleep(1)
+            if self.bot:
+                await asyncio.gather(
+                    self.bot.start_bot(),
+                    _keep_alive()  # выносим цикл в отдельный метод
+                )
+            else:
+                await _keep_alive()
 
         finally:
             if self.bot:
