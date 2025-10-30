@@ -49,17 +49,15 @@ class ScheduleManager:
         """Запускает планировщик на 00:00 для обновления цен на машины"""
         self.update_cars_scheduler.add_job(
             func=self.process_cars_update,
-            trigger=CronTrigger(hour='8-23', second='*/5')
-            # trigger=CronTrigger(hour=0, minute=0),
+            trigger=CronTrigger(hour=0, minute=0),
         )
 
-        # """Запускает планировщик на с 8:00 до 19:59 для поиска новых машин"""
+        # """Запускает планировщик с 8:00 до 19:59 для поиска новых машин"""
         self.new_cars_scheduler.add_job(
             func=self.process_cars_new,
-            # trigger=CronTrigger(hour='0-23', second='*/5')
-            trigger=CronTrigger(second='*/5')
+            trigger=CronTrigger(hour='10-18', minute='*'),
         )
-        #
+
         try:
             self.update_cars_scheduler.start()
             self.new_cars_scheduler.start()

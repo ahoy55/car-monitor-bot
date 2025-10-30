@@ -28,15 +28,16 @@ class SourceProcessor1(BaseSourceProcessor):
         elif car_type == CarType.PASSENGER:
             return 4
 
-    def scrape_updated_cars(self, max_count=1) -> List[Car]:
+    def scrape_updated_cars(self, max_count=5) -> List[Car]:
         cars = []
-        for car_type in self.mapped_car_types:
-            for i in range(1, max_count+1):
-                url = self.source.template_url % (car_type, i)
+        for i in range(0, len(self.mapped_car_types)):
+            car_type = self.mapped_car_types[i]
+            for page_index in range(1, max_count+1):
+                url = self.source.template_url % (car_type, page_index)
                 print(url)
                 scraped_cars = self._scrape_page(url)
                 cars += scraped_cars
-                time.sleep(10)
+                logger.info(f'Обновление: {len(scraped_cars)} собрано с категории {str(self.car_types[i])}, со страницы {page_index}')
         return cars
 
     def scrape_new_cars(self) -> List[Car]:

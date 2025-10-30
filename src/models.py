@@ -21,9 +21,6 @@ class Source(Base):
     # Связь one-to-many
     cars = relationship("Car", back_populates="source", cascade="all, delete-orphan")
 
-    def __repr__(self):
-        return f"<Source(id={self.id}, name='{self.name}')>"
-
 
 class Car(Base):
     __tablename__ = 'cars'

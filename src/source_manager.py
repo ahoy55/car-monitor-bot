@@ -43,15 +43,16 @@ class SourceManager:
         self.source = source
 
     async def process_new_cars(self):
-        logger.info(f"Поиск новых машин из источника: {self.source.name}")
         session = self.db_session()
+        source = session.query(Source).get(self.source.id)
+        logger.info(f"Поиск новых машин из источника: {source.name}")
         car_list = self.source_processor.scrape_new_cars()
         new_car_list = []
         try:
             for car in car_list:
                 is_car_exists = session.query(Car).filter_by(car_id=car.car_id).first() is not None
                 if not is_car_exists:
-                    car.source = self.source
+                    car.source = source
                     new_car_list.append(car)
                     session.add(car)
                 session.commit()
@@ -66,12 +67,11 @@ class SourceManager:
             session.close()
 
     async def process_updated_cars(self):
-        logger.info(f"Обновление цен на машины из источника: {self.source.name}")
         session = self.db_session()
+        source = session.query(Source).get(self.source.id)
+        logger.info(f"Обновление цен на машины из источника: {source.name}")
         car_list = self.source_processor.scrape_updated_cars()
-        print(car_list)
         changes = []
-        new_car_list = []
         try:
             for car in car_list:
                 existing_car = session.query(Car).filter_by(car_id=car.car_id).first()
@@ -82,29 +82,27 @@ class SourceManager:
                     if old_price != new_price:
                         print(f'{old_price} {new_price}')
 
-                        if _is_price_drop(old_price, new_price):
-                            changes.append(Change(car, old_price))
-
                         existing_car.price = new_price
                         existing_car.monthly_payment = car.monthly_payment
                         existing_car.city = car.city
                         existing_car.mileage = car.mileage
                         existing_car.year = car.year
-                        session.commit()
+
+                        if _is_price_drop(old_price, new_price):
+                            changes.append(Change(existing_car, old_price))
+
                 else:
-                    car.source = self.source
-                    new_car_list.append(car)
+                    car.source = source
                     session.add(car)
+
+            session.commit()
 
             if changes:
                 await self.notify_changes(changes)
 
-            if new_car_list:
-                await self.notify_new(new_car_list)
-
-        except Exception as e:
-            session.rollback()
-            logger.error(f"❌ Ошибка: {e}")
+        # except Exception as e:
+        #     session.rollback()
+        #     logger.error(f"❌ Ошибка: {e}")
         finally:
             session.close()
 
