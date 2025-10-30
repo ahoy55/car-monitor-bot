@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 class BotHandlers:
     def __init__(self, db_session):
-        self.db_session = db_session
+        self.db_session = db_session()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Обработчик команды /start"""

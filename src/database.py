@@ -6,7 +6,6 @@ from models import Base, Car, PriceHistory
 from config import Config
 import logging
 
-from src.changes import Changes
 
 logger = logging.getLogger(__name__)
 
@@ -39,11 +38,6 @@ class Database:
         # Создаем таблицы
         Base.metadata.create_all(self.engine)
         self.Session = sessionmaker(bind=self.engine)
-
-        logging.info("✅ Database tables created successfully")
-
-        self.clear_test_data()
-        logging.info("✅ Database tables cleared successfully")
 
     async def save_cars(self, cars_data, callback: Callable[[list], Coroutine[Any, Any, None]]):
         session = self.Session()

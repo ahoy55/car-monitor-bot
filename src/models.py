@@ -1,16 +1,35 @@
 from datetime import datetime
+from enum import Enum
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
 from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class Source(Base):
+    __tablename__ = 'sources'
+
+    id = Column(Integer, primary_key=True)  # добавил id для удобства связей
+    source_id = Column(String(100), unique=True, index=True)
+    name = Column(String(100))
+    base_url = Column(String(500))
+    template_url = Column(String(1000))
+    is_active = Column(Boolean, default=True)
+
+    # Связь one-to-many
+    cars = relationship("Car", back_populates="source", cascade="all, delete-orphan")
+
+    def __repr__(self):
+        return f"<Source(id={self.id}, name='{self.name}')>"
 
 
 class Car(Base):
     __tablename__ = 'cars'
 
     @classmethod
-    def from_dict(cls, car_data: dict):
+    def from_dict(cls, car_data: dict, source: Source = None):
         """Создает объект Car из словаря"""
         return cls(
             car_id=car_data.get('id'),
@@ -22,7 +41,8 @@ class Car(Base):
             year=car_data.get('year'),
             flags=str(car_data.get('flags', [])),
             detail_url=car_data.get('detail_url'),
-            image_url=car_data.get('image_url')
+            image_url=car_data.get('image_url'),
+            source=source  # привязываем источник
         )
 
     id = Column(Integer, primary_key=True)
@@ -38,6 +58,11 @@ class Car(Base):
     image_url = Column(String(500))
     created_at = Column(DateTime, default=datetime.now)
 
+    # Внешний ключ к источнику
+    source_id = Column(Integer, ForeignKey('sources.id'), nullable=False)
+
+    # Связь many-to-one
+    source = relationship("Source", back_populates="cars")
 
 
 class PriceHistory(Base):
@@ -62,3 +87,8 @@ class UserSubscription(Base):
     notify_new_cars = Column(Boolean, default=True)
     brands = Column(Text)
     created_at = Column(DateTime, default=datetime.now)
+
+
+class CarType(Enum):
+    PASSENGER = 0
+    CARGO = 1

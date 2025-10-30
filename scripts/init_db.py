@@ -1,17 +1,15 @@
 #!/usr/bin/env python3
-"""
-Скрипт инициализации базы данных
-"""
-
-import sys
+import json
 import logging
-from pathlib import Path
+import sys
 
-# Добавляем путь к src для импорта модулей
+from pathlib import Path
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy import create_engine
+
 sys.path.append(str(Path(__file__).parent.parent / 'src'))
 
-from sqlalchemy import create_engine
-from models import Base, UserSubscription
+from models import Base, UserSubscription, Source
 from config import Config
 
 # Настройка логирования
@@ -22,17 +20,21 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def init_database():
-    """Инициализация базы данных"""
-
-    # Создаем директорию для базы данных, если её нет
-    db_path = Config.DATABASE_URL
-
-    logger.info(f"Инициализация базы данных: {db_path}")
-
+def load_from_file(json_file_path: str):
+    """Загрузка данных из JSON файла"""
     try:
-        # Создаем движок и все таблицы
-        engine = create_engine(
+        with open(json_file_path, 'r', encoding='utf-8') as file:
+            data = json.load(file)
+        return data
+    except Exception as e:
+        print(f"❌ Ошибка загрузки JSON файла: {e}")
+        return False
+
+
+class DbInitializer():
+
+    def __init__(self):
+        self.engine = create_engine(
             Config.DATABASE_URL,
             # Дополнительные настройки для стабильности
             pool_size=5,
@@ -40,20 +42,33 @@ def init_database():
             pool_pre_ping=True,
             echo=Config.IS_DEBUG  # Показывает SQL запросы в консоли при DEBUG
         )
-        Base.metadata.create_all(engine)
+        session_maker = sessionmaker(bind=self.engine)
+        self.session = session_maker()
 
-        logger.info("✅ Таблицы успешно созданы:")
-        for table in Base.metadata.tables.keys():
-            logger.info(f"   - {table}")
+    def init_database(self):
+        """Инициализация базы данных"""
+        db_path = Config.DATABASE_URL
+        logger.info(f"Инициализация базы данных: {db_path}")
+        try:
+            # Создаем движок и все таблицы
+            Base.metadata.create_all(self.engine)
 
+            logger.info("✅ Таблицы успешно созданы:")
+            for table in Base.metadata.tables.keys():
+                logger.info(f"   - {table}")
+
+            self.add_telegram_admin()
+            self.populate_sources()
+            logger.info("🎉 База данных успешно инициализирована!")
+
+        except Exception as e:
+            logger.error(f"❌ Ошибка инициализации базы данных: {e}")
+            sys.exit(1)
+
+    def add_telegram_admin(self):
         # Добавляем администратора, если указан chat_id
         if Config.ADMIN_CHAT_ID:
-            from sqlalchemy.orm import sessionmaker
-            Session = sessionmaker(bind=engine)
-            session = Session()
-
-            # Проверяем, существует ли уже администратор
-            admin = session.query(UserSubscription).filter_by(chat_id=Config.ADMIN_CHAT_ID).first()
+            admin = self.session.query(UserSubscription).filter_by(chat_id=Config.ADMIN_CHAT_ID).first()
 
             if not admin:
                 admin = UserSubscription(
@@ -64,24 +79,43 @@ def init_database():
                     notify_price_drops=True,
                     notify_new_cars=True,
                 )
-                session.add(admin)
-                session.commit()
+                self.session.add(admin)
+                self.session.commit()
                 logger.info(f"✅ Администратор добавлен: {Config.ADMIN_CHAT_ID}")
             else:
                 logger.info("ℹ️ Администратор уже существует")
 
-            session.close()
+            self.session.close()
 
-        logger.info("🎉 База данных успешно инициализирована!")
+    def populate_sources(self):
+        json_file_path = Config.SOURCES_PATH
+        logger.info(f'ℹ️ Заполнение данные источников из файла {json_file_path}')
+        source_data_list = load_from_file(json_file_path)
+        source_list = []
+        for source_data in source_data_list:
+            source_id = source_data['source_id']
+            source = self.session.query(Source).filter_by(source_id=source_id).first()
+            if source:
+                logger.info(f'✅  Источник {source.name} уже добавлен')
+            else:
+                source_list.append(
+                    Source(
+                        source_id=source_id,
+                        name=source_data['name'],
+                        base_url=source_data['base_url'],
+                        template_url=source_data['template_url']
+                    )
+                )
 
-    except Exception as e:
-        logger.error(f"❌ Ошибка инициализации базы данных: {e}")
-        sys.exit(1)
+        self.session.bulk_save_objects(source_list)
+        self.session.commit()
+        logger.info(f"✅  Добавлено {len(source_list)} источников: {', '.join(map(lambda i: i.name, source_list))}.")
 
 
 if __name__ == "__main__":
     print("🚗 Инициализация базы данных мониторинга цен")
     print("=" * 60)
 
-    init_database()
+    initializer = DbInitializer()
+    initializer.init_database()
     print("🎉 Все готово! База данных успешно инициализирована.")

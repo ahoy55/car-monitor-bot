@@ -8,11 +8,9 @@ load_dotenv()
 @dataclass
 class Config:
     IS_DEBUG = False
-    DEBUG_DIR = "data"
 
-    BASE_URL = os.getenv("BASE_URL", "")
-    TYPE_2_URL = os.getenv("TYPE_2_URL", "")
-    TYPE_4_URL = os.getenv("TYPE_4_URL", "")
+    # Sources
+    SOURCES_PATH = os.getenv("SOURCES_PATH", "")
 
     # DB
     DB_HOST = os.getenv("DB_HOST", "")

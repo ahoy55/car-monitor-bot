@@ -1,19 +1,28 @@
 import logging
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
+from .handlers import BotHandlers
+from config import Config
+
 logger = logging.getLogger(__name__)
 
+
 class TelegramBot:
+
     def __init__(self, db_session):
         self.db_session = db_session
-        from config import Config
         self.application = Application.builder().token(Config.TELEGRAM_BOT_TOKEN).build()
-
-        # Импортируем здесь чтобы избежать циклических импортов
-        from bot.handlers import BotHandlers
         self.handlers = BotHandlers(db_session)
-
         self._setup_handlers()
+
+    async def initialize(self):
+        if Config.TELEGRAM_BOT_TOKEN:
+            try:
+                await self.start_bot()
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize bot: {e}")
+        else:
+            logger.info("ℹ️ Telegram bot disabled (no token)")
 
     def _setup_handlers(self):
         """Настройка обработчиков"""

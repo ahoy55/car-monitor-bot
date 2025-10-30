@@ -11,9 +11,6 @@ COPY . .
 
 RUN mkdir -p /app/data /app/logs /app/backups
 
-# Создаем пустой файл БД
-RUN echo "" > /app/data/cars.db && chmod 666 /app/data/cars.db
-
 # Запускаем инициализацию БД при сборке
 RUN python3 scripts/init_db.py
 
