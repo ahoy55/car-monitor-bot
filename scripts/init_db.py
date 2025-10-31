@@ -2,10 +2,13 @@
 import json
 import logging
 import sys
+import time
 
 from pathlib import Path
+
+from psycopg2 import OperationalError
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 sys.path.append(str(Path(__file__).parent.parent / 'src'))
 
@@ -31,6 +34,27 @@ def load_from_file(json_file_path: str):
         return False
 
 
+def wait_for_postgres(max_retries=30, delay=2):
+    """Ждем пока PostgreSQL не станет доступен"""
+    from config import Config
+
+    for i in range(0, max_retries):
+        try:
+            logger.info(f"🔄 Попытка подключения к БД ({i + 1}/{max_retries})...")
+            engine = create_engine(Config.DATABASE_URL)
+            with engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+            logger.info("✅ База данных доступна!")
+            return True
+        except OperationalError as e:
+            logger.warning(f"⏳ БД еще не готова: {e}")
+            if i < max_retries - 1:
+                time.sleep(delay)
+            else:
+                logger.error("❌ Не удалось подключиться к БД после всех попыток")
+                return False
+
+
 class DbInitializer():
 
     def __init__(self):
@@ -47,9 +71,11 @@ class DbInitializer():
 
     def init_database(self):
         """Инициализация базы данных"""
+
         db_path = Config.DATABASE_URL
         logger.info(f"Инициализация базы данных: {db_path}")
         try:
+
             # Создаем движок и все таблицы
             Base.metadata.create_all(self.engine)
 
