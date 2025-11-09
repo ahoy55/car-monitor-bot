@@ -37,7 +37,7 @@ class SourceManager:
 
     def __init__(self, source, bot, db_session):
         self.db_session = db_session
-        self.car_types = [CarType.PASSENGER, CarType.CARGO]
+        self.car_types = [CarType.PASSENGER, CarType.CARGO, CarType.TRAILER]
         self.notification_manager = NotificationManager(bot, db_session)
         self.source_processor = get_source_processor(self.car_types, source)
         self.source = source

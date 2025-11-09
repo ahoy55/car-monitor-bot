@@ -27,6 +27,8 @@ class Config:
 
     NEW_CARS_INTERVAL_SECONDS = "*/5" if IS_DEBUG else os.getenv("NEW_CARS_INTERVAL_SECONDS", "*/59")
 
+    WORK_DAYS = "mon-sun" if IS_DEBUG else os.getenv("WORK_DAYS", "mon-fri")
+
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
     ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")

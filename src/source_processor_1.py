@@ -27,6 +27,9 @@ class SourceProcessor1(BaseSourceProcessor):
             return 2
         elif car_type == CarType.PASSENGER:
             return 4
+        elif car_type == CarType.TRAILER:
+            return 5
+        return None
 
     def scrape_updated_cars(self, max_count=5) -> List[Car]:
         cars = []

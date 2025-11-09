@@ -89,3 +89,4 @@ class UserSubscription(Base):
 class CarType(Enum):
     PASSENGER = 0
     CARGO = 1
+    TRAILER = 2
