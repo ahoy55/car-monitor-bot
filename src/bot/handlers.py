@@ -24,6 +24,7 @@ class BotHandlers:
 
         if password_attempt != Config.USER_PASSWORD:
             await update.message.reply_text("❌ Неверный пароль!")
+            return
 
         # Импортируем здесь чтобы избежать циклических импортов
         from models import UserSubscription
