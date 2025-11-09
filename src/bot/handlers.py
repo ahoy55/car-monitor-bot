@@ -16,22 +16,23 @@ class BotHandlers:
         user = update.effective_user
         chat_id = str(update.effective_chat.id)
 
-        if not context.args:
-            await update.message.reply_text("Использование: /start пароль")
-            return
-
-        password_attempt = ' '.join(context.args)
-
-        if password_attempt != Config.USER_PASSWORD:
-            await update.message.reply_text("❌ Неверный пароль!")
-            return
-
         # Импортируем здесь чтобы избежать циклических импортов
         from models import UserSubscription
 
         # Сохраняем/обновляем пользователя
         subscription = self.db_session.query(UserSubscription).filter_by(chat_id=chat_id).first()
         if not subscription:
+
+            if not context.args:
+                await update.message.reply_text("Использование: /start пароль")
+                return
+
+            password_attempt = ' '.join(context.args)
+
+            if password_attempt != Config.USER_PASSWORD:
+                await update.message.reply_text("❌ Неверный пароль!")
+                return
+
             subscription = UserSubscription(
                 chat_id=chat_id,
                 username=user.username,
