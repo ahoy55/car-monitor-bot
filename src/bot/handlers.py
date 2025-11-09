@@ -12,9 +12,18 @@ class BotHandlers:
         self.db_session = db_session()
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Обработчик команды /start"""
+        """Обработчик команды /start {password} """
         user = update.effective_user
         chat_id = str(update.effective_chat.id)
+
+        if not context.args:
+            await update.message.reply_text("Использование: /start пароль")
+            return
+
+        password_attempt = ' '.join(context.args)
+
+        if password_attempt != Config.USER_PASSWORD:
+            await update.message.reply_text("❌ Неверный пароль!")
 
         # Импортируем здесь чтобы избежать циклических импортов
         from models import UserSubscription
@@ -41,7 +50,6 @@ class BotHandlers:
             f"🕐 Время обновления авто: каждый день в {Config.UPDATE_CARS_HOURS} часов\n\n"
             "📊 <b>Доступные команды:</b>\n"
             "/settings - Настройки уведомлений\n"
-            "/stats - Статистика\n"
             "/help - Помощь"
         )
 
@@ -166,7 +174,6 @@ class BotHandlers:
             "<b>Команды:</b>\n"
             "/start - Запуск бота\n"
             "/settings - Настройки уведомлений\n"
-            "/stats - Статистика\n"
             "/help - Эта справка\n\n"
             "<b>Что отслеживаем:</b>\n"
             "• Снижения цен на автомобили\n"
