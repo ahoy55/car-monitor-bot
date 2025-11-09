@@ -59,6 +59,7 @@ class ScheduleManager:
         self.update_cars_scheduler.add_job(
             func=self.process_cars_update,
             trigger=CronTrigger(
+                day_of_week="mon-fri",
                 hour=Config.UPDATE_CARS_HOURS,
                 minute=0,
                 timezone=timezone
@@ -69,6 +70,7 @@ class ScheduleManager:
         self.new_cars_scheduler.add_job(
             func=self.process_cars_new,
             trigger=CronTrigger(
+                day_of_week="mon-fri",
                 hour=f'{Config.NEW_CARS_HOUR_START}-{Config.NEW_CARS_HOUR_END}',
                 second=f'*/{Config.NEW_CARS_INTERVAL_SECONDS}',
                 timezone=timezone
