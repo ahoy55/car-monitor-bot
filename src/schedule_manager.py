@@ -1,6 +1,7 @@
 import asyncio
 import logging
 
+import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -11,7 +12,7 @@ from config import Config
 from bot.bot import TelegramBot
 
 logger = logging.getLogger(__name__)
-
+timezone = pytz.timezone('Europe/Moscow')
 
 async def _keep_alive():
     """Бесконечный цикл для поддержания работы"""
@@ -57,7 +58,11 @@ class ScheduleManager:
         """Запускает планировщик на 00:00 для обновления цен на машины"""
         self.update_cars_scheduler.add_job(
             func=self.process_cars_update,
-            trigger=CronTrigger(hour=Config.UPDATE_CARS_HOURS, minute=0),
+            trigger=CronTrigger(
+                hour=Config.UPDATE_CARS_HOURS,
+                minute=0,
+                timezone=timezone
+            )
         )
 
         """Запускает планировщик с 8:00 до 19:59 для поиска новых машин"""
@@ -65,8 +70,9 @@ class ScheduleManager:
             func=self.process_cars_new,
             trigger=CronTrigger(
                 hour=f'{Config.NEW_CARS_HOUR_START}-{Config.NEW_CARS_HOUR_END}',
-                second=f'*/{Config.NEW_CARS_INTERVAL_SECONDS}'
-            ),
+                second=f'*/{Config.NEW_CARS_INTERVAL_SECONDS}',
+                timezone=timezone
+            )
         )
 
         try:
