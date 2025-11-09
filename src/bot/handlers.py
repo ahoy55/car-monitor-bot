@@ -1,10 +1,14 @@
 import logging
+from datetime import datetime
+
+import pytz
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ContextTypes, CommandHandler, MessageHandler, filters, CallbackQueryHandler
 
 from config import Config
 
 logger = logging.getLogger(__name__)
+timezone = pytz.timezone('Europe/Moscow')
 
 
 class BotHandlers:
@@ -47,9 +51,10 @@ class BotHandlers:
             "Я буду уведомлять вас о:\n"
             "• 📉 Снижениях цен на автомобили\n"
             "• 🆕 Появлении новых автомобилей\n\n"
-            f"🕐 Время сбора новых авто: {Config.NEW_CARS_HOUR_START}:00 - {Config.NEW_CARS_HOUR_END}:00 "
-            f"с интервалом {Config.NEW_CARS_INTERVAL_SECONDS+1} секунд\n"
-            f"🕐 Время обновления авто: каждый день в {Config.UPDATE_CARS_HOURS} часов\n\n"
+            f"🕐 Время сбора новых авто: {Config.NEW_CARS_HOURS}"
+            f" с интервалом {Config.NEW_CARS_INTERVAL_SECONDS}\n"
+            f"🕐 Время обновления авто: каждый день в {Config.UPDATE_CARS_HOURS}\n"
+            f"🕐 Текущее время бота: {datetime.now(timezone)}\n\n"
             "📊 <b>Доступные команды:</b>\n"
             "/settings - Настройки уведомлений\n"
             "/help - Помощь"

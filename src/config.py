@@ -21,10 +21,11 @@ class Config:
     USER_PASSWORD = os.getenv("USER_PASSWORD", "")
 
     # Scraper
-    UPDATE_CARS_HOURS = int(os.getenv("UPDATE_CARS_HOURS", 10))
-    NEW_CARS_HOUR_START = 0 if IS_DEBUG else int(os.getenv("NEW_CARS_HOUR_START", 10))
-    NEW_CARS_HOUR_END = 23 if IS_DEBUG else int(os.getenv("NEW_CARS_HOUR_END", 18))
-    NEW_CARS_INTERVAL_SECONDS = 5 if IS_DEBUG else int(os.getenv("NEW_CARS_INTERVAL_SECONDS", 59))
+    UPDATE_CARS_HOURS = os.getenv("UPDATE_CARS_HOURS", "11,15")
+
+    NEW_CARS_HOURS = "0-23" if IS_DEBUG else os.getenv("NEW_CARS_HOURS", "10-18")
+
+    NEW_CARS_INTERVAL_SECONDS = "*/5" if IS_DEBUG else os.getenv("NEW_CARS_INTERVAL_SECONDS", "*/59")
 
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")

@@ -26,8 +26,8 @@ class ScheduleManager:
         self.db = Database()
         self.db_session = self.db.Session
         self.bot = TelegramBot(self.db_session)
-        self.update_cars_scheduler = AsyncIOScheduler()
-        self.new_cars_scheduler = AsyncIOScheduler()
+        self.update_cars_scheduler = AsyncIOScheduler(timezone=timezone)
+        self.new_cars_scheduler = AsyncIOScheduler(timezone=timezone)
         self.source_managers = self._get_source_managers()
 
     def _get_source_managers(self):
@@ -71,8 +71,8 @@ class ScheduleManager:
             func=self.process_cars_new,
             trigger=CronTrigger(
                 day_of_week="mon-fri",
-                hour=f'{Config.NEW_CARS_HOUR_START}-{Config.NEW_CARS_HOUR_END}',
-                second=f'*/{Config.NEW_CARS_INTERVAL_SECONDS}',
+                hour=Config.NEW_CARS_HOURS,
+                second=Config.NEW_CARS_INTERVAL_SECONDS,
                 timezone=timezone
             )
         )
