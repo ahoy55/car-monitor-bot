@@ -31,7 +31,7 @@ class SourceProcessor1(BaseSourceProcessor):
             return 5
         return None
 
-    def scrape_updated_cars(self, max_count=5) -> List[Car]:
+    def scrape_updated_cars(self, max_count=100) -> List[Car]:
         cars = []
         for i in range(0, len(self.mapped_car_types)):
             car_type = self.mapped_car_types[i]

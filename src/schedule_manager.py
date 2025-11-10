@@ -26,8 +26,14 @@ class ScheduleManager:
         self.db = Database()
         self.db_session = self.db.Session
         self.bot = TelegramBot(self.db_session)
-        self.update_cars_scheduler = AsyncIOScheduler(timezone=timezone)
-        self.new_cars_scheduler = AsyncIOScheduler(timezone=timezone)
+        self.scheduler = AsyncIOScheduler(
+            timezone=timezone,
+            job_defaults={
+                'coalesce': True,
+                'max_instances': 1,
+                'misfire_grace_time': 300
+            }
+        )
         self.source_managers = self._get_source_managers()
 
     def _get_source_managers(self):
@@ -55,31 +61,32 @@ class ScheduleManager:
 
     async def run(self):
 
-        """Запускает планировщик на 00:00 для обновления цен на машины"""
-        self.update_cars_scheduler.add_job(
+        self.scheduler.add_job(
+            id="update_cars",
             func=self.process_cars_update,
             trigger=CronTrigger(
                 day_of_week=Config.WORK_DAYS,
                 hour=Config.UPDATE_CARS_HOURS,
                 minute=0,
                 timezone=timezone
-            )
+            ),
+            misfire_grace_time=3600
         )
 
-        """Запускает планировщик с 8:00 до 19:59 для поиска новых машин"""
-        self.new_cars_scheduler.add_job(
+        self.scheduler.add_job(
+            id="new_cars",
             func=self.process_cars_new,
             trigger=CronTrigger(
                 day_of_week=Config.WORK_DAYS,
                 hour=Config.NEW_CARS_HOURS,
                 second=Config.NEW_CARS_INTERVAL_SECONDS,
                 timezone=timezone
-            )
+            ),
+            misfire_grace_time=30
         )
 
         try:
-            self.update_cars_scheduler.start()
-            self.new_cars_scheduler.start()
+            self.scheduler.start()
 
             if self.bot:
                 await asyncio.gather(
@@ -92,5 +99,4 @@ class ScheduleManager:
         finally:
             if self.bot:
                 await self.bot.stop_bot()
-            self.update_cars_scheduler.shutdown()
-            self.new_cars_scheduler.shutdown()
+            self.scheduler.shutdown()
