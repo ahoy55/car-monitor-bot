@@ -100,9 +100,9 @@ class SourceManager:
             if changes:
                 await self.notify_changes(changes)
 
-        # except Exception as e:
-        #     session.rollback()
-        #     logger.error(f"❌ Ошибка: {e}")
+        except Exception as e:
+            session.rollback()
+            logger.error(f"❌ Ошибка: {e}")
         finally:
             session.close()
 
