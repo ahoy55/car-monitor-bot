@@ -4,6 +4,8 @@ from telegram.error import TelegramError
 from models import UserSubscription
 from config import Config
 
+from src.bot.templates import format_new_car_message, format_price_drop_message
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,7 +48,7 @@ class NotificationManager:
         ).all()
 
         new_price = car.price
-        message = self._format_price_drop_message(car, old_price, new_price)
+        message = format_price_drop_message(car, old_price, new_price)
 
         for subscriber in subscribers:
             await self._send_message(subscriber.chat_id, message)
@@ -58,7 +60,7 @@ class NotificationManager:
             UserSubscription.notify_new_cars
         ).all()
 
-        message = self._format_new_car_message(car)
+        message = format_new_car_message(car)
 
         for subscriber in subscribers:
             await self._send_message(subscriber.chat_id, message)
@@ -76,32 +78,3 @@ class NotificationManager:
             logger.info(f"Уведомление отправлено пользователю {chat_id}")
         except TelegramError as e:
             logger.error(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
-
-    def _format_new_car_message(self, car) -> str:
-        """Форматирование сообщения о новом автомобиле"""
-        return (
-            "🆕 <b>Новый автомобиль!</b>\n\n"
-            f"🖥️ Источник: <b>{car.source.name}</b>\n"
-            f"🚗 <b>{car.title}</b>\n"
-            f"🏙️ {car.city}\n"
-            f"📏 {car.mileage}\n"
-            f"📅 {car.year}\n"
-            f"💰 {car.price}\n"
-            f"📆 {car.monthly_payment}\n"
-            f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
-        )
-
-    def _format_price_drop_message(self, car, old_price: str, new_price: str) -> str:
-        """Форматирование сообщения о снижении цены"""
-        return (
-            "💰 <b>Снижение цены!</b>\n\n"
-            f"🖥️ Источник: <b>{car.source.name}</b>\n"
-            f"🚗 <b>{car.title}</b>\n"
-            f"🏙️ {car.city}\n"
-            f"📏 {car.mileage}\n"
-            f"📅 {car.year}\n\n"
-            f"📉 <b>Цена снизилась на {_calculate_drop_percent(old_price, new_price):.01f}%</b>\n"
-            f"❌ Было: {old_price}\n"
-            f"✅ Стало: {new_price}\n\n"
-            f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
-        )
