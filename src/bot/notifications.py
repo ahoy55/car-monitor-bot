@@ -1,10 +1,19 @@
 import logging
+from dataclasses import dataclass
+from typing import List
+
 from telegram import Bot
 from telegram.error import TelegramError
 from models import UserSubscription
-from config import Config
 
-from src.bot.templates import format_new_car_message, format_price_drop_message
+from bot.templates import format_multiple_price_drops_messages, format_multiple_new_cars_messages
+from models import Car
+
+from bot.templates import PriceDrop
+
+from bot.templates import get_new_cars_title
+
+from config import Config
 
 logger = logging.getLogger(__name__)
 
@@ -17,22 +26,53 @@ def _extract_price(price_str: str) -> int:
     return int(clean_price) if clean_price else 0
 
 
-def _calculate_drop_percent(old_price: str, new_price: str):
-    try:
-        # Убираем всё кроме цифр
-        old_clean = ''.join(c for c in old_price if c.isdigit())
-        new_clean = ''.join(c for c in new_price if c.isdigit())
+def prepare_message(messages: list, max_length: int = 4096) -> list:
+    """
+        Разбивает список сообщений на части, не превышающие max_length символов.
+        Если одно сообщение больше лимита - разбивает его на части.
+        """
+    final_messages = []
+    current_batch = []
+    current_length = 0
+    separator = "\n\n"
+    separator_length = len(separator)
 
-        int_old_price = int(old_clean)
-        int_new_price = int(new_clean)
+    for message in messages:
+        message_length = len(message)
 
-        if int_old_price > 0:
-            return (int_old_price - int_new_price) / int_old_price * 100
+        # Если одно сообщение больше лимита - разбиваем его
+        if message_length > max_length:
+            # Сохраняем текущую группу
+            if current_batch:
+                final_messages.append(separator.join(current_batch))
+                current_batch = []
+                current_length = 0
 
-    except (ValueError, ZeroDivisionError):
-        pass
+            # Разбиваем длинное сообщение на части
+            for i in range(0, message_length, max_length):
+                final_messages.append(message[i:i + max_length])
+            continue
 
-    return 0
+        # Проверяем, поместится ли сообщение в текущую группу
+        needed_length = message_length
+        if current_batch:  # Если не первое сообщение, добавляем разделитель
+            needed_length += separator_length
+
+        if current_length + needed_length <= max_length:
+            current_batch.append(message)
+            current_length += needed_length
+        else:
+            # Сохраняем текущую группу и начинаем новую
+            if current_batch:
+                final_messages.append(separator.join(current_batch))
+            current_batch = [message]
+            current_length = message_length
+
+    # Добавляем последнюю группу
+    if current_batch:
+        final_messages.append(separator.join(current_batch))
+
+    return final_messages
 
 
 class NotificationManager:
@@ -40,41 +80,29 @@ class NotificationManager:
         self.bot = bot
         self.db_session = db_session()
 
-    async def notify_price_drop(self, car, old_price: str):
+    async def notify_price_drop(self, price_drops: List[PriceDrop]):
         """Уведомление о снижении цены"""
-        subscribers = self.db_session.query(UserSubscription).filter(
-            UserSubscription.is_active,
-            UserSubscription.notify_price_drops
-        ).all()
+        messages = format_multiple_price_drops_messages(price_drops)
+        await self._send_message(Config.PRICE_DROP_THREAD_ID, prepare_message(messages))
 
-        new_price = car.price
-        message = format_price_drop_message(car, old_price, new_price)
 
-        for subscriber in subscribers:
-            await self._send_message(subscriber.chat_id, message)
-
-    async def notify_new_car(self, car):
+    async def notify_new_car(self, cars: List[Car]):
         """Уведомление о новом автомобиле"""
-        subscribers = self.db_session.query(UserSubscription).filter(
-            UserSubscription.is_active,
-            UserSubscription.notify_new_cars
-        ).all()
+        messages = format_multiple_new_cars_messages(cars)
+        await self._send_message(Config.NEW_THREAD_ID, prepare_message(messages))
 
-        message = format_new_car_message(car)
-
-        for subscriber in subscribers:
-            await self._send_message(subscriber.chat_id, message)
-
-    async def _send_message(self, chat_id: str, message: str):
+    async def _send_message(self, message_thread_id: int, messages: list):
         """Отправка сообщения с обработкой ошибок"""
-        print(f"send message {len(message)}")
         try:
-            await self.bot.send_message(
-                chat_id=chat_id,
-                text=message,
-                parse_mode='HTML',
-                disable_web_page_preview=False
-            )
-            logger.info(f"Уведомление отправлено пользователю {chat_id}")
+            for message in messages:
+                logger.info(f"Отправка: thread={message_thread_id}, len={len(message)}")
+                result = await self.bot.send_message(
+                    chat_id=Config.CHANNEL_CHAT_ID,
+                    message_thread_id=message_thread_id,
+                    text=message,
+                    parse_mode='HTML',
+                    disable_web_page_preview=False
+                )
+                logger.info(f"Отправлено: msg_id={result.message_id}, thread={result.message_thread_id}")
         except TelegramError as e:
-            logger.error(f"Ошибка отправки уведомления пользователю {chat_id}: {e}")
+            logger.error(f"Ошибка отправки: {e}")

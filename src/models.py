@@ -1,11 +1,17 @@
+import enum
 from datetime import datetime
-from enum import Enum
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+
+class CarType(enum.Enum):
+    PASSENGER = "passenger"
+    CARGO = "cargo"
+    TRAILER = "trailer"
 
 
 class Source(Base):
@@ -30,6 +36,7 @@ class Car(Base):
         """Создает объект Car из словаря"""
         return cls(
             car_id=car_data.get('id'),
+            type=car_data.get('type'),
             title=car_data.get('title'),
             price=car_data.get('price'),
             monthly_payment=' '.join(car_data.get('monthly_payment').split()),
@@ -44,6 +51,7 @@ class Car(Base):
 
     id = Column(Integer, primary_key=True)
     car_id = Column(String(50), unique=True, index=True)
+    type = Column(Enum(CarType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
     title = Column(String(200))
     price = Column(String(100))
     monthly_payment = Column(String(100))
@@ -84,9 +92,3 @@ class UserSubscription(Base):
     notify_new_cars = Column(Boolean, default=True)
     brands = Column(Text)
     created_at = Column(DateTime, default=datetime.now)
-
-
-class CarType(Enum):
-    PASSENGER = 0
-    CARGO = 1
-    TRAILER = 2

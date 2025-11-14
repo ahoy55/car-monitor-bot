@@ -32,6 +32,9 @@ class Config:
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
     ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
+    CHANNEL_CHAT_ID = os.getenv("CHANNEL_CHAT_ID", 0)
+    NEW_THREAD_ID = int(os.getenv("NEW_THREAD_ID", 0))
+    PRICE_DROP_THREAD_ID = int(os.getenv("PRICE_DROP_THREAD_ID", 0))
 
     # Уведомления
     NOTIFY_PRICE_DROP_PERCENT = int(os.getenv("NOTIFY_PRICE_DROP_PERCENT", 5))

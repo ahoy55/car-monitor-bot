@@ -128,6 +128,8 @@ class SourceProcessor1(BaseSourceProcessor):
                 url = self.source.template_url % (car_type, page_index)
                 print(url)
                 scraped_cars = self._scrape_page(url)
+                for scraped_car in scraped_cars:
+                    scraped_car.type = self.car_types[i]
                 cars += scraped_cars
                 logger.info(
                     f'Обновление: {len(scraped_cars)} собрано с категории {str(self.car_types[i])}, со страницы {page_index}')
@@ -139,6 +141,8 @@ class SourceProcessor1(BaseSourceProcessor):
             car_type = self.mapped_car_types[i]
             url = self.source.template_url % (car_type, 1)
             new_cars = self._scrape_page(url)
+            for new_car in new_cars:
+                new_car.type = self.car_types[i]
             cars += new_cars
             logger.info(f'{len(new_cars)} собрано с категории {str(self.car_types[i])}')
         return cars

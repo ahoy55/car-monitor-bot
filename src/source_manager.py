@@ -5,15 +5,9 @@ from bot.notifications import NotificationManager
 from models import Source, Car, CarType
 from base_source_processor import BaseSourceProcessor
 from source_processor_1 import SourceProcessor1
+from bot.templates import PriceDrop
 
 logger = logging.getLogger(__name__)
-
-
-class Change:
-
-    def __init__(self, car: Car, old_price=""):
-        self.car = car
-        self.old_price = old_price  # 0 if this is new car
 
 
 def _is_price_drop(old_price: str, new_price: str) -> bool:
@@ -71,7 +65,7 @@ class SourceManager:
         source = session.query(Source).get(self.source.id)
         logger.info(f"Обновление цен на машины из источника: {source.name}")
         car_list = self.source_processor.scrape_updated_cars()
-        changes = []
+        price_drops = []
         try:
             for car in car_list:
                 existing_car = session.query(Car).filter_by(car_id=car.car_id).first()
@@ -89,7 +83,7 @@ class SourceManager:
                         existing_car.year = car.year
 
                         if _is_price_drop(old_price, new_price):
-                            changes.append(Change(existing_car, old_price))
+                            price_drops.append(PriceDrop(existing_car, old_price))
 
                 else:
                     car.source = source
@@ -97,8 +91,8 @@ class SourceManager:
 
             session.commit()
 
-            if changes:
-                await self.notify_changes(changes)
+            if price_drops:
+                await self.notify_changes(price_drops)
 
         except Exception as e:
             session.rollback()
@@ -106,10 +100,8 @@ class SourceManager:
         finally:
             session.close()
 
-    async def notify_changes(self, changes: List[Change]):
-        for change in changes:
-            await self.notification_manager.notify_price_drop(change.car, change.old_price)
+    async def notify_changes(self, price_drops: List[PriceDrop]):
+        await self.notification_manager.notify_price_drop(price_drops)
 
     async def notify_new(self, cars: List[Car]):
-        for car in cars:
-            await self.notification_manager.notify_new_car(car)
+        await self.notification_manager.notify_new_car(cars)
