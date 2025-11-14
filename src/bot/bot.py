@@ -36,10 +36,10 @@ class TelegramBot:
         self.application.add_handler(CallbackQueryHandler(self.handlers.handle_callback))
 
         # Сообщения
-        self.application.add_handler(MessageHandler(
-            filters.TEXT & ~filters.COMMAND,
-            self.handlers.handle_price_range
-        ))
+        # self.application.add_handler(MessageHandler(
+        #     filters.TEXT & ~filters.COMMAND,
+        #     self.handlers.handle_price_range
+        # ))
 
     async def start_bot(self):
         """Запуск бота"""
