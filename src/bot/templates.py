@@ -48,11 +48,7 @@ def format_multiple_new_cars_messages(cars: list) -> list:
 
 
 def format_new_cars_message(car):
-    return (f"🖥 <b>Источник:</b> {car.source.name}\n"
-            f"🚛 <b>Тип:</b> {_get_vehicle_type(car)}\n"
-            f"🚗 {car.title}\n"
-            f"💰 {car.price}\n"
-            f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>")
+    return format_common_message(car, f"{car.price}")
 
 
 def get_new_cars_title(count):
@@ -82,13 +78,8 @@ def format_price_drops_message(price_drop: PriceDrop):
     car = price_drop.car
     old_price = price_drop.old_price
     drop_percent = _calculate_drop_percent(old_price, car.price)
-    return (
-        f"🖥 <b>Источник:</b> {car.source.name}\n"
-        f"🚛 <b>Тип:</b> {_get_vehicle_type(car)}\n"
-        f"🚗 {car.title}\n"
-        f"💰 <s>{old_price}</s> → <b>{car.price}</b> (-{drop_percent:.01f}%)\n"
-        f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
-    )
+    price_text = f"<s>{old_price}</s> → <b>{car.price}</b> (-{drop_percent:.01f}%)"
+    return format_common_message(car, price_text)
 
 
 def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
@@ -96,3 +87,13 @@ def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
     messages = [format_price_drops_message(price_drop) for price_drop in price_drops]
     messages[0] = get_price_drops_title(len(price_drops)) + messages[0]
     return messages
+
+def format_common_message(car: Car, price_text):
+    return (
+        f"🖥 Источник: <b>{car.source.name}</b>\n"
+        f"🚛 Тип: <b>{_get_vehicle_type(car)}</b>\n"
+        f"🚗 <b>{car.title}</b>\n"
+        f"📏 {car.mileage}\n"
+        f"💰 {price_text}\n"
+        f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
+    )
