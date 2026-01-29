@@ -9,6 +9,7 @@ from schedule_manager import ScheduleManager
 from bot.bot import TelegramBot
 from config import Config
 from database import Database
+from src.models import Car
 
 # Добавляем текущую директорию в Python path
 sys.path.append(str(Path(__file__).parent))
@@ -30,8 +31,12 @@ class CarMonitorApp:
 
 
 async def main():
-    app = CarMonitorApp()
-    await app.run()
+    car = Car.from_dict({
+        "monthly_payment":"100000"
+    })
+    print(car.monthly_payment)
+    # app = CarMonitorApp()
+    # await app.run()
 
 if __name__ == "__main__":
     asyncio.run(main())

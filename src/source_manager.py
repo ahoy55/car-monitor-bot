@@ -67,6 +67,11 @@ class SourceManager:
         car_list = self.source_processor.scrape_updated_cars()
         price_drops = []
         try:
+            if car_list is None:
+                logger.error("❌ Ошибка: scrape_updated_cars() вернул None")
+                session.close()
+                return
+
             for car in car_list:
                 existing_car = session.query(Car).filter_by(car_id=car.car_id).first()
                 if existing_car:

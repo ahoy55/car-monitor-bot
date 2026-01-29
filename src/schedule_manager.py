@@ -61,6 +61,10 @@ class ScheduleManager:
 
     async def run(self):
 
+        await self.process_cars_new()
+
+        await self.process_cars_update()
+
         self.scheduler.add_job(
             id="update_cars",
             func=self.process_cars_update,
