@@ -10,6 +10,57 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+        chmod 600 ~/.ssh/deploy_key
+        
+        ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
+        
+    - name: Copy code to server
+      run: |
+        echo "Copying project files to server..."
+        
+        # Создаем tar архив проекта
+        tar -czf project.tar.gz \
+          --exclude='.git' \
+          --exclude='node_modules' \
+          --exclude='__pycache__' \
+          --exclude='.env' \
+          .
+        
+        # Копируем на сервер
+        scp -i ~/.ssh/deploy_key \
+            -P ${{ secrets.SSH_PORT }} \
+            project.tar.gz \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/project.tar.gz
+        
+        # Распаковываем на сервере
+        ssh -i ~/.ssh/deploy_key \
+            -p ${{ secrets.SSH_PORT }} \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
+          echo "Extracting project files..."
+          
+          # Создаем директорию если нет
+          sudo mkdir -p /opt/car-bot
+          sudo chown -R $USER:$USER /opt/car-bot
+          
+          # Распаковываем
+          tar -xzf /tmp/project.tar.gz -C /opt/car-bot/
+          
+          # Очищаем
+          rm /tmp/project.tar.gz
+          
+          echo "Files copied to /opt/car-bot:"
+          ls -la /opt/car-bot/
+        EOF
+        
     - name: Deploy to Server via SSH
       uses: appleboy/ssh-action@v0.1.6
       with:
@@ -21,6 +72,7 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
         ADMIN_CHAT_ID: ${{ secrets.TG_BOT_ADMIN }}
         CHANNEL_CHAT_ID: ${{ secrets.TG_CHANNEL_ID }}
+        SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
 
         script: |
           # Экспортируем переменные окружения на сервере
@@ -39,7 +91,10 @@ jobs:
           # Останавливаем контейнеры
           echo "🛑 Stopping containers..."
           docker-compose down || true
-          
+
+          # GPG
+          bash decrypt.sh
+                
           # Собираем заново
           echo "🔨 Building containers..."
           docker-compose build --no-cache --pull
