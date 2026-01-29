@@ -23,9 +23,36 @@ jobs:
         CHANNEL_CHAT_ID: ${{ secrets.TG_CHANNEL_ID }}
 
         script: |
+          # Экспортируем переменные окружения на сервере
+          export TELEGRAM_BOT_TOKEN="${{ secrets.TG_BOT_TOKEN }}"
+          export ADMIN_CHAT_ID="${{ secrets.TG_BOT_ADMIN }}"
+          export CHANNEL_CHAT_ID="${{ secrets.TG_CHANNEL_ID }}"
+          
+          # Переходим в директорию проекта
           cd /opt/car-bot
 
-          # Restart containers
-          docker-compose down
-          docker compose build
+          # Логируем начало деплоя
+          echo "🚀 Starting deployment..."
+          echo "Commit: ${{ github.sha }}"
+          echo "Branch: ${{ github.ref }}"
+
+          # Останавливаем контейнеры
+          echo "🛑 Stopping containers..."
+          docker-compose down || true
+          
+          # Собираем заново
+          echo "🔨 Building containers..."
+          docker-compose build --no-cache --pull
+          
+          # Запускаем
+          echo "🚀 Starting containers..."
           docker-compose up -d
+          
+          # Проверяем статус
+          echo "✅ Checking container status..."
+          sleep 5
+          docker-compose ps
+          
+          # Логи последних 10 строк
+          echo "📋 Checking logs..."
+          docker-compose logs --tail=10
