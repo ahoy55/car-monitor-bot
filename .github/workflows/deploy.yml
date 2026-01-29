@@ -27,26 +27,16 @@ jobs:
       run: |
         echo "Copying project files to server..."
         
-        # Создаем временную копию проекта для архивации
+        # Создаем временную копию проекта
         mkdir -p /tmp/deploy
         cp -r . /tmp/deploy/project/
-        
-        # Переходим во временную директорию
         cd /tmp/deploy/project
         
         # Удаляем ненужные файлы
-        rm -rf .git __pycache__ node_modules .env 2>/dev/null || true
+        rm -rf .git __pycache__ .env 2>/dev/null || true
         
-        # Создаем архив без ошибок "file changed"
-        tar -czf ../project.tar.gz \
-          --warning=no-file-changed \
-          --exclude='.git' \
-          --exclude='__pycache__' \
-          --exclude='*.pyc' \
-          --exclude='node_modules' \
-          --exclude='.env' \
-          --exclude='.github' \
-          .
+        # Создаем архив
+        tar -czf ../project.tar.gz .
         
         # Копируем на сервер
         scp -i ~/.ssh/deploy_key \
@@ -55,15 +45,17 @@ jobs:
             /tmp/deploy/project.tar.gz \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/project.tar.gz
         
-        # Распаковываем на сервере
+        # Распаковываем на сервере с sudo
         ssh -i ~/.ssh/deploy_key \
             -o StrictHostKeyChecking=no \
             -p ${{ secrets.SSH_PORT }} \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
           echo "Extracting project files..."
           
-          # Создаем директорию
-          mkdir -p /opt/car-bot
+          # Создаем директорию с правильными правами
+          sudo mkdir -p /opt/car-bot
+          sudo chown -R $USER:$USER /opt/car-bot
+          sudo chmod 755 /opt/car-bot
           
           # Распаковываем архив
           tar -xzf /tmp/project.tar.gz -C /opt/car-bot/ --strip-components=1
@@ -74,9 +66,6 @@ jobs:
           echo "Files in /opt/car-bot:"
           ls -la /opt/car-bot/
         EOF
-        
-        # Очищаем временные файлы
-        rm -rf /tmp/deploy
         
     - name: Deploy to Server via SSH
       uses: appleboy/ssh-action@v0.1.6
