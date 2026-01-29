@@ -34,12 +34,19 @@ class Car(Base):
     @classmethod
     def from_dict(cls, car_data: dict, source: Source = None):
         """Создает объект Car из словаря"""
+
+        monthly_payment_raw = car_data.get('monthly_payment')
+        if monthly_payment_raw is not None:
+            monthly_payment = ' '.join(str(monthly_payment_raw).split())
+        else:
+            monthly_payment = '0'
+
         return cls(
             car_id=car_data.get('id'),
             type=car_data.get('type'),
             title=car_data.get('title'),
             price=car_data.get('price'),
-            monthly_payment=' '.join(car_data.get('monthly_payment').split()),
+            monthly_payment=monthly_payment,
             city=car_data.get('city'),
             mileage=car_data.get('mileage'),
             year=car_data.get('year'),
