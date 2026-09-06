@@ -98,7 +98,9 @@ class NotificationManager:
                 logger.info(f"Отправка: thread={message_thread_id}, len={len(message)}")
                 result = await self.bot.send_message(
                     chat_id=Config.CHANNEL_CHAT_ID,
-                    message_thread_id=message_thread_id,
+                    # 0 означает "тема не задана": в обычную группу или канал
+                    # message_thread_id слать нельзя, Telegram ответит ошибкой
+                    message_thread_id=message_thread_id or None,
                     text=message,
                     parse_mode='HTML',
                     disable_web_page_preview=False

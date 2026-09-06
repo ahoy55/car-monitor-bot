@@ -89,11 +89,13 @@ def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
     return messages
 
 def format_common_message(car: Car, price_text):
+    # у новых машин пробега нет — строку тогда не показываем
+    mileage_text = f"📏 {car.mileage}\n" if car.mileage else ""
     return (
         f"🖥 Источник: <b>{car.source.name}</b>\n"
         f"🚛 Тип: <b>{_get_vehicle_type(car)}</b>\n"
         f"🚗 <b>{car.title}</b>\n"
-        f"📏 {car.mileage}\n"
+        f"{mileage_text}"
         f"💰 {price_text}\n"
         f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
     )
