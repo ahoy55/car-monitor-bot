@@ -4,6 +4,7 @@ __pycache__
 *.pyd
 .Python
 env
+venv
 pip-log.txt
 pip-delete-this-directory.txt
 .tox
@@ -15,9 +16,20 @@ coverage.xml
 *.cover
 *.log
 .git
+.github
 .mypy_cache
 .pytest_cache
 .history
 .DS_Store
 *.db
 *.sqlite3
+.idea
+
+# секреты и данные — приходят на сервер при деплое, не в образ
+.env
+data
+logs
+
+# отладочные артефакты
+page.html
+build.log

@@ -1,3 +1,8 @@
 /data/*
 !/data/*.gpg
 .env
+
+# IDE и отладочные артефакты
+.idea/
+build.log
+page.html

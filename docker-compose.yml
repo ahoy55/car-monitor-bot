@@ -11,7 +11,8 @@ services:
     networks:
       - car_network
     ports:
-      - "5432:5432"
+      # только с самой машины: наружу базу с дефолтным паролем выставлять нельзя
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U car_user -d car_bot"]
       interval: 5s
@@ -21,11 +22,16 @@ services:
     restart: unless-stopped
 
   app:
+    # На сервере APP_IMAGE задаётся в .env и указывает на образ из GHCR,
+    # локально образ собирается из исходников этой же командой.
+    image: ${APP_IMAGE:-car-monitor-bot-app:local}
     build: .
     container_name: car_monitor_bot
     depends_on:
       postgres:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://car_user:car_password@postgres:5432/car_bot
       - PYTHONPATH=/app/src

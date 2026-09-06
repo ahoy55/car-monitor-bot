@@ -3,117 +3,181 @@ name: Deploy to Server
 on:
   push:
     branches: [ main ]
-  workflow_dispatch:  # Ручной запуск
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  DEPLOY_DIR: /opt/car-bot
 
 jobs:
-  deploy:
+  build:
+    name: Сборка образа
     runs-on: ubuntu-latest
-    
+    permissions:
+      contents: read
+      packages: write
+
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup SSH
-      run: |
-        mkdir -p ~/.ssh
-        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
-        chmod 600 ~/.ssh/deploy_key
-        
-        ssh-keyscan -p ${{ secrets.SSH_PORT }} ${{ secrets.SSH_HOST }} >> ~/.ssh/known_hosts
-        
-    - name: Copy code to server
-      run: |
-        echo "Copying project files to server..."
-        
-        # Создаем временную копию проекта
-        mkdir -p /tmp/deploy
-        cp -r . /tmp/deploy/project/
-        cd /tmp/deploy/project
-        
-        # Удаляем ненужные файлы
-        rm -rf .git __pycache__ .env 2>/dev/null || true
-        
-        # Создаем архив
-        tar -czf ../project.tar.gz .
-        
-        # Копируем на сервер
-        scp -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -P ${{ secrets.SSH_PORT }} \
-            /tmp/deploy/project.tar.gz \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/tmp/project.tar.gz
-        
-        # Распаковываем на сервере с sudo
-        ssh -i ~/.ssh/deploy_key \
-            -o StrictHostKeyChecking=no \
-            -p ${{ secrets.SSH_PORT }} \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-          echo "Extracting project files..."
-          
-          # Создаем директорию с правильными правами
-          sudo mkdir -p /opt/car-bot
-          sudo chown -R $USER:$USER /opt/car-bot
-          sudo chmod 755 /opt/car-bot
-          
-          # Распаковываем архив
-          tar -xzf /tmp/project.tar.gz -C /opt/car-bot/ --strip-components=1
-          
-          # Очищаем
-          rm /tmp/project.tar.gz
-          
-          echo "Files in /opt/car-bot:"
-          ls -la /opt/car-bot/
-        EOF
-        
-    - name: Deploy to Server via SSH
-      uses: appleboy/ssh-action@v0.1.6
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USER }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.SSH_PORT }}
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
-        ADMIN_CHAT_ID: ${{ secrets.TG_BOT_ADMIN }}
-        CHANNEL_CHAT_ID: ${{ secrets.TG_CHANNEL_ID }}
-        SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
+      - name: Проверка синтаксиса
+        run: python -m compileall -q src scripts
 
-        script: |
-          # Экспортируем переменные окружения на сервере
-          export TELEGRAM_BOT_TOKEN="${{ secrets.TG_BOT_TOKEN }}"
-          export ADMIN_CHAT_ID="${{ secrets.TG_BOT_ADMIN }}"
-          export CHANNEL_CHAT_ID="${{ secrets.TG_CHANNEL_ID }}"
-          
-          # Переходим в директорию проекта
-          cd /opt/car-bot
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
 
-          # Логируем начало деплоя
-          echo "🚀 Starting deployment..."
-          echo "Commit: ${{ github.sha }}"
-          echo "Branch: ${{ github.ref }}"
+      - name: Login в GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-          # Останавливаем контейнеры
-          echo "🛑 Stopping containers..."
-          docker-compose down || true
+      - name: Сборка и публикация образа
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
-          # GPG
-          bash decrypt.sh
-                
-          # Собираем заново
-          echo "🔨 Building containers..."
-          docker-compose build --no-cache --pull
-          
-          # Запускаем
-          echo "🚀 Starting containers..."
-          docker-compose up -d
-          
-          # Проверяем статус
-          echo "✅ Checking container status..."
-          sleep 5
-          docker-compose ps
-          
-          # Логи последних 10 строк
-          echo "📋 Checking logs..."
-          docker-compose logs --tail=10
+  deploy:
+    name: Деплой на сервер
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Расшифровка sources.json
+        env:
+          SECRET_KEY: ${{ secrets.GPG_SECRET_KEY }}
+        run: bash decrypt.sh
+
+      - name: Настройка SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          umask 077
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          ssh-keyscan -p "$SSH_PORT" "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Формирование .env
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          ADMIN_CHAT_ID: ${{ secrets.TG_BOT_ADMIN }}
+          CHANNEL_CHAT_ID: ${{ secrets.TG_CHANNEL_ID }}
+          USER_PASSWORD: ${{ secrets.USER_PASSWORD }}
+          NEW_THREAD_ID: ${{ secrets.TG_NEW_THREAD_ID }}
+          PRICE_DROP_THREAD_ID: ${{ secrets.TG_PRICE_DROP_THREAD_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          # Пустые переменные не пишем: Config приводит THREAD_ID к int,
+          # и пустая строка уронила бы приложение на старте.
+          {
+            echo "APP_IMAGE=${IMAGE}:${GITHUB_SHA}"
+            echo "TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}"
+            echo "ADMIN_CHAT_ID=${ADMIN_CHAT_ID}"
+            echo "CHANNEL_CHAT_ID=${CHANNEL_CHAT_ID}"
+            if [ -n "${USER_PASSWORD:-}" ]; then echo "USER_PASSWORD=${USER_PASSWORD}"; fi
+            if [ -n "${NEW_THREAD_ID:-}" ]; then echo "NEW_THREAD_ID=${NEW_THREAD_ID}"; fi
+            if [ -n "${PRICE_DROP_THREAD_ID:-}" ]; then echo "PRICE_DROP_THREAD_ID=${PRICE_DROP_THREAD_ID}"; fi
+          } > deploy.env
+          echo "Записано строк: $(wc -l < deploy.env)"
+
+      - name: Копирование файлов на сервер
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i ~/.ssh/deploy_key -p $SSH_PORT $SSH_USER@$SSH_HOST"
+
+          $SSH "sudo mkdir -p $DEPLOY_DIR/data $DEPLOY_DIR/logs \
+                && sudo chown -R \$USER:\$USER $DEPLOY_DIR"
+
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" \
+              docker-compose.yml \
+              "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/docker-compose.yml"
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" \
+              data/sources.json \
+              "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/data/sources.json"
+          scp -i ~/.ssh/deploy_key -P "$SSH_PORT" \
+              deploy.env \
+              "$SSH_USER@$SSH_HOST:$DEPLOY_DIR/.env"
+
+      - name: Авторизация сервера в GHCR
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Токен уходит через stdin, в логи не попадает
+          printf '%s' "$REGISTRY_TOKEN" | ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" \
+            "$SSH_USER@$SSH_HOST" \
+            "docker login ghcr.io -u ${{ github.actor }} --password-stdin"
+
+      - name: Запуск на сервере
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/deploy_key -p "$SSH_PORT" "$SSH_USER@$SSH_HOST" \
+              "DEPLOY_DIR='$DEPLOY_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+
+          if ! docker compose version >/dev/null 2>&1; then
+            echo "❌ На сервере нет docker compose v2 (плагина docker-compose-plugin)"
+            exit 1
+          fi
+
+          cd "$DEPLOY_DIR"
+
+          echo "📦 Забираем образ..."
+          docker compose pull
+
+          echo "🚀 Перезапускаем..."
+          docker compose up -d --no-build --remove-orphans
+
+          echo "⏳ Ждём, пока приложение поднимется..."
+          sleep 20
+
+          state=$(docker inspect -f '{{.State.Status}}' car_monitor_bot 2>/dev/null || echo missing)
+          restarts=$(docker inspect -f '{{.RestartCount}}' car_monitor_bot 2>/dev/null || echo 0)
+
+          if [ "$state" != "running" ] || [ "$restarts" -gt 0 ]; then
+            echo "❌ Контейнер не поднялся (статус=$state, перезапусков=$restarts)"
+            docker compose logs --tail=80 app
+            exit 1
+          fi
+
+          echo "✅ Контейнер работает"
+          docker compose logs --tail=20 app
+          docker image prune -f >/dev/null
+          REMOTE
+
+      - name: Очистка ключа
+        if: always()
+        run: rm -f ~/.ssh/deploy_key deploy.env
