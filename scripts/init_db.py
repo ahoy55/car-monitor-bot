@@ -122,7 +122,22 @@ class DbInitializer():
             source_id = source_data['source_id']
             source = self.session.query(Source).filter_by(source_id=source_id).first()
             if source:
-                logger.info(f'✅  Источник {source.name} уже добавлен')
+                # Файл — источник истины: иначе смена template_url требовала бы
+                # ручного UPDATE на проде, файл и база расходились бы молча
+                changed = [
+                    field for field, value in (
+                        ('name', source_data['name']),
+                        ('base_url', source_data['base_url']),
+                        ('template_url', source_data['template_url']),
+                    ) if getattr(source, field) != value
+                ]
+                for field in changed:
+                    setattr(source, field, source_data[field])
+
+                if changed:
+                    logger.info(f'♻️  Источник {source.name} обновлён: {", ".join(changed)}')
+                else:
+                    logger.info(f'✅  Источник {source.name} уже добавлен')
             else:
                 source_list.append(
                     Source(
