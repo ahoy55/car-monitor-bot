@@ -111,8 +111,15 @@ jobs:
           set -euo pipefail
           SSH="ssh -i ~/.ssh/deploy_key -p $SSH_PORT $SSH_USER@$SSH_HOST"
 
-          $SSH "sudo mkdir -p $DEPLOY_DIR/data $DEPLOY_DIR/logs \
-                && sudo chown -R \$USER:\$USER $DEPLOY_DIR"
+          # без sudo: каталог создаётся один раз при подготовке сервера
+          # и принадлежит пользователю деплоя
+          $SSH "mkdir -p $DEPLOY_DIR/data $DEPLOY_DIR/logs" || {
+            echo "❌ Нет доступа к $DEPLOY_DIR."
+            echo "   Разовая подготовка сервера:"
+            echo "     sudo mkdir -p $DEPLOY_DIR/data $DEPLOY_DIR/logs"
+            echo "     sudo chown -R \$USER:\$USER $DEPLOY_DIR"
+            exit 1
+          }
 
           scp -i ~/.ssh/deploy_key -P "$SSH_PORT" \
               docker-compose.yml \
@@ -150,6 +157,12 @@ jobs:
 
           if ! docker compose version >/dev/null 2>&1; then
             echo "❌ На сервере нет docker compose v2 (плагина docker-compose-plugin)"
+            exit 1
+          fi
+
+          if ! docker info >/dev/null 2>&1; then
+            echo "❌ Пользователь деплоя не имеет доступа к docker."
+            echo "   Разовая подготовка: sudo usermod -aG docker \$USER"
             exit 1
           fi
 
