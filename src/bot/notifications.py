@@ -116,15 +116,9 @@ class NotificationManager:
         self.db_session = db_session()
 
     async def notify_price_drop(self, price_drops: List[PriceDrop]):
-        """Уведомление о снижении цены: сначала самые большие скидки"""
-        drops = [drop for drop in price_drops if get_drop_percent(drop) >= Config.NOTIFY_PRICE_DROP_PERCENT]
-        if len(drops) < len(price_drops):
-            logger.info(f"Снижений меньше {Config.NOTIFY_PRICE_DROP_PERCENT}%: "
-                        f"{len(price_drops) - len(drops)} — без уведомления")
-        if not drops:
-            return
-
-        drops.sort(key=get_drop_percent, reverse=True)
+        """Уведомление о снижении цены: сначала самые большие скидки.
+        Порог уже применён при записи истории цен — здесь только отправка."""
+        drops = sorted(price_drops, key=get_drop_percent, reverse=True)
         await self._send_separately(
             message_thread_id=Config.PRICE_DROP_THREAD_ID,
             items=drops,

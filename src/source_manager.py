@@ -3,11 +3,12 @@ import logging
 from typing import Dict, Iterable, List, Optional
 
 from bot.notifications import NotificationManager
-from models import Source, Car, CarType
+from models import Source, Car, CarType, PriceHistory
 from base_source_processor import BaseSourceProcessor
 from source_processor_1 import SourceProcessor1
 from source_processor_2 import SourceProcessor2
-from bot.templates import PriceDrop
+from bot.templates import PriceDrop, get_drop_percent
+from config import Config
 from source_health import SourceHealth
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,33 @@ def _find_existing_cars(session, car_ids: Iterable[str]) -> Dict[str, Car]:
         for car in session.query(Car).filter(Car.car_id.in_(chunk)):
             existing[car.car_id] = car
     return existing
+
+
+def _load_price_histories(session, car_ids: Iterable[str]) -> Dict[str, List[PriceHistory]]:
+    """История цен по машинам, от старых записей к новым."""
+    car_ids = list(car_ids)
+    histories = {}
+    for start in range(0, len(car_ids), EXISTING_CARS_CHUNK):
+        chunk = car_ids[start:start + EXISTING_CARS_CHUNK]
+        rows = (session.query(PriceHistory)
+                .filter(PriceHistory.car_id.in_(chunk))
+                .order_by(PriceHistory.created_at, PriceHistory.id))
+        for row in rows:
+            histories.setdefault(row.car_id, []).append(row)
+    return histories
+
+
+def _starting_price_entry(car: Car) -> PriceHistory:
+    return PriceHistory(car_id=car.car_id, price=car.price, monthly_payment=car.monthly_payment, is_reference=True)
+
+
+def _has_price(price: Optional[str]) -> bool:
+    # у лотов внешних торгов вместо суммы "Аукцион"
+    return any(c.isdigit() for c in price or "")
+
+
+def _count_drops(history: List[PriceHistory]) -> int:
+    return sum(1 for previous, current in zip(history, history[1:]) if _is_price_drop(previous.price, current.price))
 
 
 def get_source_processor(car_types: List[CarType], source: Source) -> BaseSourceProcessor:
@@ -95,6 +123,7 @@ class SourceManager:
                     new_car_list.append(car)
                     known_cars[car.car_id] = car
                     session.add(car)
+                    session.add(_starting_price_entry(car))
                 session.commit()
 
                 if new_car_list:
@@ -128,7 +157,7 @@ class SourceManager:
             try:
                 source = session.query(Source).get(self.source.id)
                 known_cars = _find_existing_cars(session, (car.car_id for car in car_list))
-                price_drops = []
+                changed_cars = []
 
                 for car in car_list:
                     existing_car = known_cars.get(car.car_id)
@@ -149,15 +178,15 @@ class SourceManager:
                             existing_car.city = car.city
                             existing_car.mileage = car.mileage
                             existing_car.year = car.year
-
-                            if _is_price_drop(old_price, new_price):
-                                price_drops.append(PriceDrop(existing_car, old_price))
+                            changed_cars.append((existing_car, old_price))
 
                     else:
                         car.source = source
                         known_cars[car.car_id] = car
                         session.add(car)
+                        session.add(_starting_price_entry(car))
 
+                price_drops = self._record_price_changes(session, changed_cars)
                 session.commit()
 
                 if price_drops:
@@ -171,6 +200,57 @@ class SourceManager:
                 session.close()
 
             await self._report(self.updated_cars_health, problem)
+
+    def _record_price_changes(self, session, changed_cars) -> List[PriceDrop]:
+        """Пишет смены цен в историю и отбирает снижения для уведомления."""
+        if not changed_cars:
+            return []
+
+        histories = _load_price_histories(session, {car.car_id for car, _ in changed_cars})
+        price_drops = []
+        below_threshold = 0
+
+        for car, old_price in changed_cars:
+            history = histories.setdefault(car.car_id, [])
+            if not history:
+                # машина собрана до того, как начали вести историю:
+                # её прежняя цена и есть отправная точка
+                baseline = PriceHistory(car_id=car.car_id, price=old_price, is_reference=True,
+                                        created_at=car.created_at)
+                session.add(baseline)
+                history.append(baseline)
+
+            entry = PriceHistory(car_id=car.car_id, price=car.price, monthly_payment=car.monthly_payment)
+            session.add(entry)
+            history.append(entry)
+
+            # Отправной точкой может быть только цена с суммой: иначе машина,
+            # у которой сначала стоял "Аукцион", не дала бы ни одного уведомления.
+            priced_history = [row for row in history[:-1] if _has_price(row.price)]
+            if not priced_history or not _has_price(car.price):
+                continue
+            # цена выросла — только запись в историю
+            if _has_price(old_price) and not _is_price_drop(old_price, car.price):
+                continue
+
+            # Сравниваем не с предыдущей ценой, а с той, что видели читатели:
+            # иначе снижения на 3% и ещё на 3% оба остались бы под порогом в 5%.
+            reference = next((row for row in reversed(priced_history) if row.is_reference), priced_history[0])
+            if not _is_price_drop(reference.price, car.price):
+                continue
+
+            price_drop = PriceDrop(car, reference.price, first_price=priced_history[0].price,
+                                   drop_count=_count_drops(priced_history + [entry]))
+            if get_drop_percent(price_drop) < Config.NOTIFY_PRICE_DROP_PERCENT:
+                below_threshold += 1
+                continue
+
+            entry.is_reference = True
+            price_drops.append(price_drop)
+
+        if below_threshold:
+            logger.info(f"Снижений меньше {Config.NOTIFY_PRICE_DROP_PERCENT}%: {below_threshold} — без уведомления")
+        return price_drops
 
     def _check_scraped(self, car_list, errors_before: int, previous_count: Optional[int] = None) -> Optional[str]:
         """Причина считать запуск неудачным или None, если всё в порядке."""

@@ -98,7 +98,9 @@ class DbInitializer():
         в уже существующие не добавляет — дописываем их сами, идемпотентно."""
         with self.engine.begin() as conn:
             conn.execute(text("ALTER TABLE cars ADD COLUMN IF NOT EXISTS brand VARCHAR(100)"))
-        logger.info("✅ Колонки таблицы cars проверены")
+            conn.execute(text(
+                "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS is_reference BOOLEAN NOT NULL DEFAULT FALSE"))
+        logger.info("✅ Колонки таблиц cars и price_history проверены")
 
     def add_telegram_admin(self):
         # Добавляем администратора, если указан chat_id

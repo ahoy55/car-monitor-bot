@@ -86,6 +86,10 @@ class PriceHistory(Base):
     car_id = Column(String(50), index=True)
     price = Column(String(100))
     monthly_payment = Column(String(100))
+    # Отправная точка для следующего снижения: стартовая цена машины или цена
+    # из последнего уведомления. Так несколько мелких снижений подряд
+    # складываются, а не теряются каждое под порогом.
+    is_reference = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
 
 

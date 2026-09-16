@@ -1,7 +1,7 @@
 import re
 from dataclasses import dataclass
 from html import escape
-from typing import List
+from typing import List, Optional
 
 from models import Car
 from models import CarType
@@ -11,7 +11,12 @@ from parsing_utils import format_number
 @dataclass
 class PriceDrop:
     car: Car
+    # цена, которую читатели видели последней, — не обязательно предыдущая:
+    # несколько мелких снижений подряд складываются в одно уведомление
     old_price: str
+    first_price: Optional[str] = None
+    # сколько раз цена снижалась за всю историю, включая это снижение
+    drop_count: int = 1
 
 
 def _calculate_drop_percent(old_price: str, new_price: str):
@@ -105,13 +110,42 @@ def get_price_drops_title(count, more=False):
     return f"📉 <b>{prefix}{count} {count_text}!</b>\n\n"
 
 
+def _format_percent(value: float) -> str:
+    return f"{value:.1f}".replace(".", ",")
+
+
+def _price_history_line(price_drop: PriceDrop) -> Optional[str]:
+    """Повторные снижения — сигнал, что продавец готов уступать. Строку
+    показываем, только когда в ней есть что-то сверх заголовка."""
+    first_price = price_drop.first_price
+    total_percent = _calculate_drop_percent(first_price, price_drop.car.price) if first_price else 0
+    from_first = first_price and first_price != price_drop.old_price and total_percent > 0
+    if price_drop.drop_count < 2 and not from_first:
+        return None
+
+    parts = []
+    if price_drop.drop_count >= 2:
+        parts.append(f"снижается {price_drop.drop_count}-й раз")
+    if from_first:
+        parts.append(f"−{_format_percent(total_percent)}% от первой цены {escape(first_price)}")
+    text = " · ".join(parts)
+    return f"📊 {text[0].upper()}{text[1:]}"
+
+
 def format_price_drops_message(price_drop: PriceDrop):
     car = price_drop.car
     # выгода — первой строкой: по ней решают, открывать ли карточку
-    drop_percent = f"{get_drop_percent(price_drop):.1f}".replace(".", ",")
+    drop_percent = _format_percent(get_drop_percent(price_drop))
     headline = f"📉 <b>−{format_number(_get_drop_amount(price_drop))} ₽ (−{drop_percent}%)</b>\n"
     price_text = f"<s>{escape(price_drop.old_price)}</s> → <b>{escape(car.price)}</b>"
-    return headline + format_common_message(car, price_text)
+    message = headline + format_common_message(car, price_text)
+
+    history_line = _price_history_line(price_drop)
+    if history_line:
+        # перед ссылкой — последней строкой карточки
+        body, link = message.rsplit("\n", 1)
+        message = f"{body}\n{history_line}\n{link}"
+    return message
 
 
 def format_multiple_price_drops_messages(price_drops: List[PriceDrop], more=False) -> list:
