@@ -1,13 +1,17 @@
 import asyncio
+import io
 import logging
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
 
+import httpx
+from PIL import Image, UnidentifiedImageError
 from telegram import Bot
 from telegram.error import BadRequest, NetworkError, RetryAfter, TelegramError
 from models import UserSubscription
 
-from bot.templates import format_multiple_price_drops_messages, format_multiple_new_cars_messages
+from bot.templates import format_multiple_price_drops_messages, format_multiple_new_cars_messages, \
+    format_price_drops_message, get_drop_percent, absolute_url
 from models import Car
 
 from bot.templates import PriceDrop
@@ -25,6 +29,26 @@ SEND_RETRIES = 3
 SEND_RETRY_DELAY_SECONDS = 3
 # стандартные 5 секунд python-telegram-bot при пачке отправок не хватает
 SEND_READ_TIMEOUT_SECONDS = 20
+
+# Лучшие снижения идут отдельными сообщениями с фото — их можно переслать
+# и найти по хэштегу. Если снижений много (распродажа), остальные уходят
+# одной сводкой, чтобы не растягивать отправку и не заваливать тему.
+MAX_SEPARATE_PRICE_DROPS = 20
+# лимит Telegram на подпись к фото
+CAPTION_LIMIT = 1024
+IMAGE_TIMEOUT_SECONDS = 15
+IMAGE_MAX_BYTES = 5 * 1024 * 1024
+
+
+def _to_jpeg(content: bytes) -> bytes:
+    """Один из источников отдаёт картинки в WebP. Чтобы не зависеть от того,
+    как Telegram обработает этот формат в фото, отправляем всё как JPEG."""
+    with Image.open(io.BytesIO(content)) as image:
+        if image.format == 'JPEG':
+            return content
+        buffer = io.BytesIO()
+        image.convert('RGB').save(buffer, format='JPEG', quality=90)
+        return buffer.getvalue()
 
 
 def _extract_price(price_str: str) -> int:
@@ -90,9 +114,33 @@ class NotificationManager:
         self.db_session = db_session()
 
     async def notify_price_drop(self, price_drops: List[PriceDrop]):
-        """Уведомление о снижении цены"""
-        messages = format_multiple_price_drops_messages(price_drops)
-        await self._send_message(Config.PRICE_DROP_THREAD_ID, prepare_message(messages))
+        """Уведомление о снижении цены: сначала самые большие скидки"""
+        drops = [drop for drop in price_drops if get_drop_percent(drop) >= Config.NOTIFY_PRICE_DROP_PERCENT]
+        if len(drops) < len(price_drops):
+            logger.info(f"Снижений меньше {Config.NOTIFY_PRICE_DROP_PERCENT}%: "
+                        f"{len(price_drops) - len(drops)} — без уведомления")
+        if not drops:
+            return
+
+        drops.sort(key=get_drop_percent, reverse=True)
+        separate_drops = drops[:MAX_SEPARATE_PRICE_DROPS]
+        rest_drops = drops[MAX_SEPARATE_PRICE_DROPS:]
+
+        failed = 0
+        for index, drop in enumerate(separate_drops):
+            if index:
+                await asyncio.sleep(SEND_DELAY_SECONDS)
+            message = format_price_drops_message(drop)
+            photo = await self._download_photo(drop.car) if len(message) <= CAPTION_LIMIT else None
+            if not await self._send_one(Config.PRICE_DROP_THREAD_ID, message, photo):
+                failed += 1
+        if failed:
+            logger.error(f"Не отправлено {failed} из {len(separate_drops)} снижений цен")
+
+        if rest_drops:
+            await asyncio.sleep(SEND_DELAY_SECONDS)
+            messages = format_multiple_price_drops_messages(rest_drops, more=True)
+            await self._send_message(Config.PRICE_DROP_THREAD_ID, prepare_message(messages))
 
 
     async def notify_new_car(self, cars: List[Car]):
@@ -114,20 +162,41 @@ class NotificationManager:
         if failed:
             logger.error(f"Не отправлено {failed} из {len(messages)} сообщений, thread={message_thread_id}")
 
-    async def _send_one(self, message_thread_id: int, message: str) -> bool:
+    async def _download_photo(self, car: Car) -> Optional[bytes]:
+        if not car.image_url:
+            return None
+        url = absolute_url(car, car.image_url)
+        try:
+            async with httpx.AsyncClient(headers=Config.HEADERS, timeout=IMAGE_TIMEOUT_SECONDS,
+                                         follow_redirects=True) as client:
+                response = await client.get(url)
+                response.raise_for_status()
+            if len(response.content) > IMAGE_MAX_BYTES:
+                logger.warning(f"Фото больше {IMAGE_MAX_BYTES // 1024 // 1024} МБ, отправим без него: {url}")
+                return None
+            return await asyncio.to_thread(_to_jpeg, response.content)
+        except (httpx.HTTPError, OSError, UnidentifiedImageError) as e:
+            # без фото уведомление всё равно уйдёт текстом
+            logger.warning(f"Не удалось загрузить фото {url}: {e}")
+            return None
+
+    async def _send_one(self, message_thread_id: int, message: str, photo: Optional[bytes] = None) -> bool:
         for attempt in range(1, SEND_RETRIES + 1):
             try:
-                logger.info(f"Отправка: thread={message_thread_id}, len={len(message)}")
-                result = await self.bot.send_message(
+                logger.info(f"Отправка{' с фото' if photo else ''}: thread={message_thread_id}, len={len(message)}")
+                common = dict(
                     chat_id=Config.CHANNEL_CHAT_ID,
                     # 0 означает "тема не задана": в обычную группу или канал
                     # message_thread_id слать нельзя, Telegram ответит ошибкой
                     message_thread_id=message_thread_id or None,
-                    text=message,
                     parse_mode='HTML',
-                    disable_web_page_preview=False,
-                    read_timeout=SEND_READ_TIMEOUT_SECONDS
+                    read_timeout=SEND_READ_TIMEOUT_SECONDS,
+                    write_timeout=SEND_READ_TIMEOUT_SECONDS,
                 )
+                if photo:
+                    result = await self.bot.send_photo(photo=photo, caption=message, **common)
+                else:
+                    result = await self.bot.send_message(text=message, disable_web_page_preview=False, **common)
                 logger.info(f"Отправлено: msg_id={result.message_id}, thread={result.message_thread_id}")
                 return True
 
@@ -135,6 +204,10 @@ class NotificationManager:
                 # e удаляется по выходу из except — сохраняем для лога ниже
                 error, delay = e, e.retry_after
             except BadRequest as e:
+                if photo:
+                    # фото не приняли — уведомление важнее картинки
+                    logger.warning(f"Фото не принято ({e}), отправляем текстом")
+                    return await self._send_one(message_thread_id, message)
                 # наследник NetworkError, но повтор не поможет: неверный чат, разметка и т.п.
                 logger.error(f"Ошибка отправки: {e}")
                 return False

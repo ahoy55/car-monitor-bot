@@ -5,6 +5,7 @@ from typing import List
 
 from models import Car
 from models import CarType
+from parsing_utils import format_number
 
 
 @dataclass
@@ -29,6 +30,24 @@ def _calculate_drop_percent(old_price: str, new_price: str):
         pass
 
     return 0
+
+
+def get_drop_percent(price_drop: PriceDrop) -> float:
+    return _calculate_drop_percent(price_drop.old_price, price_drop.car.price)
+
+
+def _get_drop_amount(price_drop: PriceDrop) -> int:
+    old_price = ''.join(c for c in price_drop.old_price if c.isdigit())
+    new_price = ''.join(c for c in price_drop.car.price if c.isdigit())
+    return int(old_price or 0) - int(new_price or 0)
+
+
+def absolute_url(car: Car, url: str) -> str:
+    # у лотов внешних торгов ссылка абсолютная, у остальных — от корня сайта
+    url = url or ""
+    if url.startswith(("http://", "https://")):
+        return url
+    return f"{car.source.base_url}{url}"
 
 
 def _get_vehicle_type(car):
@@ -64,7 +83,7 @@ def get_new_cars_title(count):
     return f"🆕 <b>{count} {count_text}!</b>\n\n"
 
 
-def get_price_drops_title(count):
+def get_price_drops_title(count, more=False):
     # Склонение для снижений цен
     if count % 10 == 1 and count % 100 != 11:
         count_text = "снижение цены"
@@ -73,21 +92,24 @@ def get_price_drops_title(count):
     else:
         count_text = "снижений цен"
 
-    return f"📉 <b>{count} {count_text}!</b>\n\n"
+    # "ещё" — когда лучшие снижения уже ушли отдельными сообщениями
+    prefix = "Ещё " if more else ""
+    return f"📉 <b>{prefix}{count} {count_text}!</b>\n\n"
 
 
 def format_price_drops_message(price_drop: PriceDrop):
     car = price_drop.car
-    old_price = price_drop.old_price
-    drop_percent = _calculate_drop_percent(old_price, car.price)
-    price_text = f"<s>{escape(old_price)}</s> → <b>{escape(car.price)}</b> (-{drop_percent:.01f}%)"
-    return format_common_message(car, price_text)
+    # выгода — первой строкой: по ней решают, открывать ли карточку
+    drop_percent = f"{get_drop_percent(price_drop):.1f}".replace(".", ",")
+    headline = f"📉 <b>−{format_number(_get_drop_amount(price_drop))} ₽ (−{drop_percent}%)</b>\n"
+    price_text = f"<s>{escape(price_drop.old_price)}</s> → <b>{escape(car.price)}</b>"
+    return headline + format_common_message(car, price_text)
 
 
-def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
+def format_multiple_price_drops_messages(price_drops: List[PriceDrop], more=False) -> list:
     """Форматирование сообщения о нескольких снижениях цен"""
     messages = [format_price_drops_message(price_drop) for price_drop in price_drops]
-    messages[0] = get_price_drops_title(len(price_drops)) + messages[0]
+    messages[0] = get_price_drops_title(len(price_drops), more) + messages[0]
     return messages
 
 
@@ -114,10 +136,7 @@ def _monthly_payment_text(car: Car):
 
 
 def format_common_message(car: Car, price_text):
-    # лоты внешних торгов ведут сразу на площадку, ссылка у них абсолютная
-    detail_url = car.detail_url or ""
-    if not detail_url.startswith(("http://", "https://")):
-        detail_url = f"{car.source.base_url}{detail_url}"
+    detail_url = absolute_url(car, car.detail_url)
 
     tags = " ".join(tag for tag in (_hashtag(_get_vehicle_type(car)), _hashtag(car.brand, upper=True)) if tag)
     title = f"🚗 <b>{escape(car.title or '')}</b>" + (f" · {tags}" if tags else "")
