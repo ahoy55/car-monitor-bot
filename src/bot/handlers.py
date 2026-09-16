@@ -11,6 +11,15 @@ logger = logging.getLogger(__name__)
 timezone = pytz.timezone('Europe/Moscow')
 
 
+def _describe_interval(second_field: str) -> str:
+    """Поле second cron-триггера человеческими словами."""
+    if second_field.isdigit():
+        return "раз в минуту"
+    if second_field.startswith("*/") and second_field[2:].isdigit():
+        return f"каждые {second_field[2:]} сек."
+    return f"по расписанию second={second_field}"
+
+
 class BotHandlers:
     def __init__(self, db_session):
         self.db_session = db_session()
@@ -51,8 +60,8 @@ class BotHandlers:
             "Я буду уведомлять вас о:\n"
             "• 📉 Снижениях цен на автомобили\n"
             "• 🆕 Появлении новых автомобилей\n\n"
-            f"🕐 Время сбора новых авто: {Config.NEW_CARS_HOURS}"
-            f" с интервалом {Config.NEW_CARS_INTERVAL_SECONDS}\n"
+            f"🕐 Время сбора новых авто: {Config.NEW_CARS_HOURS},"
+            f" {_describe_interval(Config.NEW_CARS_INTERVAL_SECONDS)}\n"
             f"🕐 Время обновления авто: каждый день в {Config.UPDATE_CARS_HOURS}\n"
             f"🕐 Текущее время бота: {datetime.now(timezone)}\n\n"
             "📊 <b>Доступные команды:</b>\n"

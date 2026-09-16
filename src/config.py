@@ -25,7 +25,8 @@ class Config:
 
     NEW_CARS_HOURS = "0-23" if IS_DEBUG else os.getenv("NEW_CARS_HOURS", "10-18")
 
-    NEW_CARS_INTERVAL_SECONDS = "*/5" if IS_DEBUG else os.getenv("NEW_CARS_INTERVAL_SECONDS", "*/59")
+    # поле second cron-триггера: "0" — раз в минуту, "*/5" — каждые 5 секунд
+    NEW_CARS_INTERVAL_SECONDS = "*/5" if IS_DEBUG else os.getenv("NEW_CARS_INTERVAL_SECONDS", "0")
 
     WORK_DAYS = "mon-sun" if IS_DEBUG else os.getenv("WORK_DAYS", "mon-fri")
 

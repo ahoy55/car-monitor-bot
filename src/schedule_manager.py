@@ -59,11 +59,14 @@ class ScheduleManager:
         for source_manager in self.source_managers:
             await source_manager.process_new_cars()
 
+    async def process_initial(self):
+        try:
+            await self.process_cars_new()
+            await self.process_cars_update()
+        except Exception as e:
+            logger.error(f"❌ Ошибка первичного сбора: {e}")
+
     async def run(self):
-
-        await self.process_cars_new()
-
-        await self.process_cars_update()
 
         self.scheduler.add_job(
             id="update_cars",
@@ -91,6 +94,11 @@ class ScheduleManager:
 
         try:
             self.scheduler.start()
+
+            # Первичный сбор идёт в фоне: полный обход занимает минуты,
+            # и бот не должен всё это время молчать на команды.
+            # Ссылку на задачу держим, иначе сборщик мусора может её прервать.
+            self.initial_task = asyncio.create_task(self.process_initial())
 
             if self.bot:
                 await asyncio.gather(
