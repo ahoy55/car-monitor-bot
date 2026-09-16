@@ -1,3 +1,4 @@
+import re
 from dataclasses import dataclass
 from html import escape
 from typing import List
@@ -90,6 +91,19 @@ def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
     return messages
 
 
+def _hashtag(value, upper=False):
+    """Хэштег Telegram: только буквы, цифры и _. Нажатие на него в канале
+    показывает все сообщения с тем же тегом — фильтр без настроек."""
+    tag = re.sub(r"\W+", "_", value or "").strip("_")
+    if upper:
+        # марки на сайтах пишут по-разному: SHACMAN и Shacman — одна марка
+        tag = tag.upper()
+    # тег из одних цифр Telegram ссылкой не делает
+    if not tag or tag.replace("_", "").isdigit():
+        return None
+    return f"#{tag}"
+
+
 def _monthly_payment_text(car: Car):
     # Car.from_dict пишет "0", когда платежа нет; у лотов без полной цены
     # платёж уже стоит на месте цены — второй раз его не показываем
@@ -105,15 +119,14 @@ def format_common_message(car: Car, price_text):
     if not detail_url.startswith(("http://", "https://")):
         detail_url = f"{car.source.base_url}{detail_url}"
 
-    title = f"🚗 <b>{escape(car.title or '')}</b>"
-    vehicle_type = _get_vehicle_type(car)
-    if vehicle_type:
-        title += f" · {vehicle_type}"
+    tags = " ".join(tag for tag in (_hashtag(_get_vehicle_type(car)), _hashtag(car.brand, upper=True)) if tag)
+    title = f"🚗 <b>{escape(car.title or '')}</b>" + (f" · {tags}" if tags else "")
 
     # у новых машин пробега нет, у части лотов нет года — пропускаем пустое
+    city = _hashtag(car.city) or escape(car.city or "")
     year = (car.year or "").removesuffix(" г.")
     mileage = (car.mileage or "").removesuffix(".")
-    details = " · ".join(escape(part) for part in (car.city, year, mileage) if part)
+    details = " · ".join(part for part in (city, escape(year), escape(mileage)) if part)
 
     monthly_payment = _monthly_payment_text(car)
     price_line = f"💰 {price_text}" + (f" · {monthly_payment}" if monthly_payment else "")

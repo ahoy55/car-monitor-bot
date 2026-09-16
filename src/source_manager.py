@@ -116,6 +116,11 @@ class SourceManager:
                 for car in car_list:
                     existing_car = known_cars.get(car.car_id)
                     if existing_car:
+                        # машины, собранные до появления колонки brand, получают
+                        # марку при первом же обновлении, без отдельной миграции данных
+                        if car.brand and existing_car.brand != car.brand:
+                            existing_car.brand = car.brand
+
                         new_price = car.price
                         old_price = existing_car.price
 

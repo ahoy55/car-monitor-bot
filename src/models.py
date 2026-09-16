@@ -45,6 +45,7 @@ class Car(Base):
             car_id=car_data.get('id'),
             type=car_data.get('type'),
             title=car_data.get('title'),
+            brand=car_data.get('brand'),
             price=car_data.get('price'),
             monthly_payment=monthly_payment,
             city=car_data.get('city'),
@@ -60,6 +61,7 @@ class Car(Base):
     car_id = Column(String(50), unique=True, index=True)
     type = Column(Enum(CarType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
     title = Column(String(200))
+    brand = Column(String(100))
     price = Column(String(100))
     monthly_payment = Column(String(100))
     city = Column(String(100))
