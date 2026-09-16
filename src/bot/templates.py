@@ -61,10 +61,10 @@ def _get_vehicle_type(car):
         return None
 
 
-def format_multiple_new_cars_messages(cars: list) -> list:
+def format_multiple_new_cars_messages(cars: list, more=False) -> list:
     """Форматирование сообщения о нескольких новых автомобилях"""
     messages = [format_new_cars_message(car) for car in cars]
-    messages[0] = get_new_cars_title(len(cars)) + messages[0]
+    messages[0] = get_new_cars_title(len(cars), more) + messages[0]
     return messages
 
 
@@ -72,7 +72,13 @@ def format_new_cars_message(car):
     return format_common_message(car, escape(car.price or ""))
 
 
-def get_new_cars_title(count):
+def format_separate_new_car_message(car):
+    # отдельное сообщение пересылают и находят по тегу вне темы —
+    # заголовок сразу говорит, что это новое предложение
+    return "🆕 <b>Новое предложение</b>\n" + format_new_cars_message(car)
+
+
+def get_new_cars_title(count, more=False):
     if count % 10 == 1 and count % 100 != 11:
         count_text = "новый автомобиль"
     elif count % 10 in [2, 3, 4] and count % 100 not in [12, 13, 14]:
@@ -80,7 +86,9 @@ def get_new_cars_title(count):
     else:
         count_text = "новых автомобилей"
 
-    return f"🆕 <b>{count} {count_text}!</b>\n\n"
+    # "ещё" — когда первые машины уже ушли отдельными сообщениями
+    prefix = "Ещё " if more else ""
+    return f"🆕 <b>{prefix}{count} {count_text}!</b>\n\n"
 
 
 def get_price_drops_title(count, more=False):
