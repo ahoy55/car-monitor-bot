@@ -1,7 +1,8 @@
 import json
 import logging
 import re
-from typing import List, Optional
+import time
+from typing import Dict, List, Optional, Sequence, Tuple
 
 from bs4 import BeautifulSoup
 
@@ -17,6 +18,10 @@ logger = logging.getLogger(__name__)
 # почти не попадают, и поиск новых их не видит. По дате порядок ещё и не
 # плывёт во время полного обхода — сдвиг только от появления новых машин.
 AJAX_PARAMS = {'USER_AJAX': 'Y', 'sort': 'dateDesc'}
+
+# Список марок сайт отдаёт только в фильтре полной страницы (~4 МБ),
+# в AJAX-ответе его нет — поэтому грузим его редко и держим в памяти.
+MAKES_CACHE_SECONDS = 24 * 60 * 60
 
 # Названия характеристик в autoPropsFull -> поля модели Car
 PROP_TITLES = {
@@ -57,7 +62,32 @@ def _parse_props(item: dict) -> dict:
     return parsed
 
 
-def _parse_car_item(item: dict) -> Optional[dict]:
+def _detect_brand(name: str, makes: Sequence[str]) -> Optional[str]:
+    """Марка — самый длинный префикс названия из списка марок сайта.
+    Первого слова почти всегда хватает, но есть и многословные марки
+    (SCHMITZ CARGOBULL, LAND ROVER), поэтому оно только запасной вариант."""
+    upper_name = name.upper()
+    for make in makes:  # отсортированы от длинных к коротким
+        upper_make = make.upper()
+        if upper_name == upper_make or upper_name.startswith(upper_make + ' '):
+            return make
+    return name.split()[0] if name.split() else None
+
+
+def _parse_makes(soup) -> List[str]:
+    filter_element = soup.find('market-smart-filter')
+    if not filter_element or not filter_element.get('v-bind'):
+        return []
+    try:
+        makes_list = json.loads(filter_element['v-bind']).get('makesList') or []
+    except ValueError as e:
+        logger.error(f'Не удалось разобрать JSON фильтра: {e}')
+        return []
+    makes = {normalize(make.get('UF_NAME')) for make in makes_list}
+    return sorted((make for make in makes if make), key=len, reverse=True)
+
+
+def _parse_car_item(item: dict, makes: Sequence[str] = ()) -> Optional[dict]:
     try:
         if not item.get('name'):
             return None
@@ -65,6 +95,7 @@ def _parse_car_item(item: dict) -> Optional[dict]:
         car_data = {
             'id': str(item.get('id', '')),
             'title': item.get('name'),
+            'brand': _detect_brand(item['name'], makes),
             'detail_url': item.get('detailPageUrl', ''),
             'image_url': item.get('previewPicture', ''),
             'flags': [
@@ -108,10 +139,10 @@ def _parse_catalog_data(soup) -> Optional[dict]:
         return None
 
 
-def _cars_from_catalog(catalog_data: dict) -> List[Car]:
+def _cars_from_catalog(catalog_data: dict, makes: Sequence[str] = ()) -> List[Car]:
     cars_list = []
     for item in catalog_data.get('initialItems', []):
-        car_data = _parse_car_item(item)
+        car_data = _parse_car_item(item, makes)
         if car_data:
             cars_list.append(car_data)
 
@@ -134,6 +165,8 @@ class SourceProcessor1(BaseSourceProcessor):
         self.car_types = car_types
         self.mapped_car_types = list(map(self.map_car_types, car_types))
         self.source = source
+        # тип на сайте -> (когда загружен, марки)
+        self.makes_cache: Dict[int, Tuple[float, List[str]]] = {}
 
     def map_car_types(self, car_type: CarType):
         if car_type == CarType.CARGO:
@@ -148,6 +181,7 @@ class SourceProcessor1(BaseSourceProcessor):
         cars = []
         for i in range(0, len(self.mapped_car_types)):
             car_type = self.mapped_car_types[i]
+            makes = self._get_makes(car_type)
             for page_index in range(1, max_count + 1):
                 url = self.source.template_url % (car_type, page_index)
                 catalog_data = self._fetch_catalog(url)
@@ -162,7 +196,7 @@ class SourceProcessor1(BaseSourceProcessor):
                         f'сайт вернул {catalog_data.get("pagen")} — переходим к следующей категории')
                     break
 
-                scraped_cars = _cars_from_catalog(catalog_data)
+                scraped_cars = _cars_from_catalog(catalog_data, makes)
                 for scraped_car in scraped_cars:
                     scraped_car.type = self.car_types[i]
                 cars += scraped_cars
@@ -178,7 +212,7 @@ class SourceProcessor1(BaseSourceProcessor):
         for i in range(0, len(self.mapped_car_types)):
             car_type = self.mapped_car_types[i]
             url = self.source.template_url % (car_type, 1)
-            new_cars = self._scrape_page(url)
+            new_cars = self._scrape_page(url, self._get_makes(car_type))
             for new_car in new_cars:
                 new_car.type = self.car_types[i]
             cars += new_cars
@@ -203,11 +237,28 @@ class SourceProcessor1(BaseSourceProcessor):
             logger.error(f'На странице {url} не найден блок <market-catalog> с данными каталога')
         return catalog_data
 
-    def _scrape_page(self, url: str) -> List[Car]:
+    def _scrape_page(self, url: str, makes: Sequence[str] = ()) -> List[Car]:
         catalog_data = self._fetch_catalog(url)
         if not catalog_data:
             return []
-        return _cars_from_catalog(catalog_data)
+        return _cars_from_catalog(catalog_data, makes)
+
+    def _get_makes(self, car_type: int) -> List[str]:
+        cached = self.makes_cache.get(car_type)
+        if cached and time.time() - cached[0] < MAKES_CACHE_SECONDS:
+            return cached[1]
+
+        # полная страница без USER_AJAX: фильтр с марками есть только в ней
+        response = self._get(self.source.template_url % (car_type, 1))
+        makes = _parse_makes(BeautifulSoup(response.text, 'html.parser')) if response else []
+        logger.info(f'Список марок для типа {car_type}: {len(makes)}')
+
+        if makes:
+            self.makes_cache[car_type] = (time.time(), makes)
+        elif cached:
+            # не загрузился — лучше вчерашний список, чем первое слово названия
+            return cached[1]
+        return makes
 
 
 def test(path='page.html'):

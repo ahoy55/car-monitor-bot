@@ -21,6 +21,8 @@ class BaseSourceProcessor(ABC):
 
     def __init__(self):
         self.error_count = 0
+        # текст последней неустранимой ошибки запроса — для алерта админу
+        self.last_error = None
         self.session = requests.Session()
         self.session.headers.update(Config.HEADERS)
         self.last_request_time = 0.0
@@ -55,6 +57,7 @@ class BaseSourceProcessor(ABC):
                 self.last_request_time = time.time()
                 if attempt == self.REQUEST_RETRIES:
                     self.error_count += 1
+                    self.last_error = f'{url}: {e}'
                     logger.error(e)
                     return None
                 logger.warning(f'Попытка {attempt} из {self.REQUEST_RETRIES} для {url} не удалась: {e}')

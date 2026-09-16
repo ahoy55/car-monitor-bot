@@ -35,6 +35,7 @@ CAR_ID_PREFIX = 's2:'
 PROP_TITLES = {
     'Пробег, км': 'mileage',
     'Год выпуска': 'year',
+    'Марка': 'brand',
 }
 
 AUCTION_PRICE = 'Аукцион'

@@ -83,6 +83,8 @@ class DbInitializer():
             for table in Base.metadata.tables.keys():
                 logger.info(f"   - {table}")
 
+            self.add_missing_columns()
+
             self.add_telegram_admin()
             self.populate_sources()
             logger.info("🎉 База данных успешно инициализирована!")
@@ -90,6 +92,15 @@ class DbInitializer():
         except Exception as e:
             logger.error(f"❌ Ошибка инициализации базы данных: {e}")
             sys.exit(1)
+
+    def add_missing_columns(self):
+        """create_all создаёт только отсутствующие таблицы, новые колонки
+        в уже существующие не добавляет — дописываем их сами, идемпотентно."""
+        with self.engine.begin() as conn:
+            conn.execute(text("ALTER TABLE cars ADD COLUMN IF NOT EXISTS brand VARCHAR(100)"))
+            conn.execute(text(
+                "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS is_reference BOOLEAN NOT NULL DEFAULT FALSE"))
+        logger.info("✅ Колонки таблиц cars и price_history проверены")
 
     def add_telegram_admin(self):
         # Добавляем администратора, если указан chat_id

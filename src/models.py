@@ -45,6 +45,7 @@ class Car(Base):
             car_id=car_data.get('id'),
             type=car_data.get('type'),
             title=car_data.get('title'),
+            brand=car_data.get('brand'),
             price=car_data.get('price'),
             monthly_payment=monthly_payment,
             city=car_data.get('city'),
@@ -60,6 +61,7 @@ class Car(Base):
     car_id = Column(String(50), unique=True, index=True)
     type = Column(Enum(CarType, values_callable=lambda x: [e.value for e in x]), nullable=True, index=True)
     title = Column(String(200))
+    brand = Column(String(100))
     price = Column(String(100))
     monthly_payment = Column(String(100))
     city = Column(String(100))
@@ -84,6 +86,10 @@ class PriceHistory(Base):
     car_id = Column(String(50), index=True)
     price = Column(String(100))
     monthly_payment = Column(String(100))
+    # Отправная точка для следующего снижения: стартовая цена машины или цена
+    # из последнего уведомления. Так несколько мелких снижений подряд
+    # складываются, а не теряются каждое под порогом.
+    is_reference = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.now)
 
 

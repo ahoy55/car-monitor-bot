@@ -1,5 +1,5 @@
 import logging
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, CallbackQueryHandler
+from telegram.ext import Application, CommandHandler
 
 from .handlers import BotHandlers
 from config import Config
@@ -26,20 +26,10 @@ class TelegramBot:
 
     def _setup_handlers(self):
         """Настройка обработчиков"""
-        # Команды
+        # Уведомления уходят в канал, а не подписчикам, поэтому команд
+        # настройки подписки нет — только вход по паролю и справка
         self.application.add_handler(CommandHandler("start", self.handlers.start))
-        self.application.add_handler(CommandHandler("settings", self.handlers.settings))
-        self.application.add_handler(CommandHandler("stats", self.handlers.stats))
         self.application.add_handler(CommandHandler("help", self.handlers.help_command))
-
-        # Inline кнопки
-        self.application.add_handler(CallbackQueryHandler(self.handlers.handle_callback))
-
-        # Сообщения
-        # self.application.add_handler(MessageHandler(
-        #     filters.TEXT & ~filters.COMMAND,
-        #     self.handlers.handle_price_range
-        # ))
 
     async def start_bot(self):
         """Запуск бота"""
