@@ -1,16 +1,13 @@
 import json
 import logging
 import re
-import time
-from html import unescape
 from typing import List, Optional
 
-import requests
 from bs4 import BeautifulSoup
 
 from base_source_processor import BaseSourceProcessor
-from config import Config
 from models import Car, Source, CarType
+from parsing_utils import format_number, format_price, normalize
 
 logger = logging.getLogger(__name__)
 
@@ -18,43 +15,12 @@ logger = logging.getLogger(__name__)
 # ~120 КБ вместо ~4 МБ при том же наборе машин.
 AJAX_PARAMS = {'USER_AJAX': 'Y'}
 
-# Ответ всё равно немаленький и приходит медленно, а на частые запросы
-# подряд сайт отвечает обрывом соединения — отсюда таймаут, пауза и ретраи.
-REQUEST_TIMEOUT_SECONDS = 60
-REQUEST_DELAY_SECONDS = 2
-REQUEST_RETRIES = 3
-REQUEST_RETRY_DELAY_SECONDS = 5
-
 # Названия характеристик в autoPropsFull -> поля модели Car
 PROP_TITLES = {
     'Город': 'city',
     'Год выпуска': 'year',
     'Пробег, км': 'mileage',
 }
-
-
-def _to_int(value) -> Optional[int]:
-    try:
-        return int(str(value).replace(' ', '').replace('\xa0', ''))
-    except (TypeError, ValueError):
-        return None
-
-
-def _format_number(value) -> Optional[str]:
-    """1234567 -> '1 234 567'"""
-    number = _to_int(value)
-    return None if number is None else f'{number:,}'.replace(',', ' ')
-
-
-def _format_price(value, suffix: str) -> Optional[str]:
-    number = _to_int(value)
-    if number is None or number <= 0:
-        return None
-    return _format_number(number) + suffix
-
-
-def _normalize(text) -> str:
-    return ' '.join(unescape(str(text or '')).split())
 
 
 def _parse_props(item: dict) -> dict:
@@ -66,18 +32,18 @@ def _parse_props(item: dict) -> dict:
     parsed = {}
 
     for prop in item.get('autoPropsFull') or []:
-        field = PROP_TITLES.get(_normalize(prop.get('TITLE')))
-        value = _normalize(prop.get('VALUE'))
+        field = PROP_TITLES.get(normalize(prop.get('TITLE')))
+        value = normalize(prop.get('VALUE'))
         if not field or not value:
             continue
         if field == 'year':
             value = f'{value} г.'
         elif field == 'mileage':
-            value = f'{_format_number(value) or value} км.'
+            value = f'{format_number(value) or value} км.'
         parsed[field] = value
 
     for prop in (item.get('propsBU') or []) + (item.get('autoProps') or []):
-        text = _normalize(prop)
+        text = normalize(prop)
         if 'км' in text:
             parsed.setdefault('mileage', text)
         elif re.fullmatch(r'\d{4}\s*г\.', text):
@@ -107,8 +73,8 @@ def _parse_car_item(item: dict) -> Optional[dict]:
 
         # Цены: у карточек "только покупка" месячного платежа может не быть,
         # у лизинговых — полной цены; берём то, что есть.
-        price = _format_price(item.get('minPriceLeasing'), ' ₽')
-        monthly_payment = _format_price(item.get('leasingPayment'), ' ₽/мес')
+        price = format_price(item.get('minPriceLeasing'), ' ₽')
+        monthly_payment = format_price(item.get('leasingPayment'), ' ₽/мес')
         car_data['price'] = price or monthly_payment
         car_data['monthly_payment'] = monthly_payment
 
@@ -165,9 +131,6 @@ class SourceProcessor1(BaseSourceProcessor):
         self.car_types = car_types
         self.mapped_car_types = list(map(self.map_car_types, car_types))
         self.source = source
-        self.session = requests.Session()
-        self.session.headers.update(Config.HEADERS)
-        self.last_request_time = 0.0
 
     def map_car_types(self, car_type: CarType):
         if car_type == CarType.CARGO:
@@ -220,48 +183,22 @@ class SourceProcessor1(BaseSourceProcessor):
         return cars
 
     def _fetch_catalog(self, url: str) -> Optional[dict]:
-        """Скачивает страницу каталога и достаёт из неё данные списка машин.
+        """Скачивает страницу каталога и достаёт из неё данные списка машин."""
+        response = self._get(url, params=AJAX_PARAMS)
+        if response is None:
+            return None
 
-        Обрыв соединения случается уже во время чтения тела ответа, поэтому
-        повторять нужно запрос целиком, а не только его установку.
-        """
-        for attempt in range(1, REQUEST_RETRIES + 1):
-            try:
-                self._wait_before_request()
-                response = self.session.get(url, params=AJAX_PARAMS,
-                                            timeout=REQUEST_TIMEOUT_SECONDS)
-                self.last_request_time = time.time()
+        catalog_data = _parse_catalog_data(BeautifulSoup(response.text, 'html.parser'))
 
-                catalog_data = None
-                if response.ok:
-                    catalog_data = _parse_catalog_data(
-                        BeautifulSoup(response.text, 'html.parser'))
+        logger.info(
+            f'GET {url} -> status={response.status_code}, '
+            f'bytes={len(response.text)}, '
+            f'market-catalog={"да" if catalog_data is not None else "нет"}, '
+            f'items={len(catalog_data.get("initialItems", [])) if catalog_data else 0}')
 
-                logger.info(
-                    f'GET {url} -> status={response.status_code}, '
-                    f'bytes={len(response.text)}, '
-                    f'market-catalog={"да" if catalog_data is not None else "нет"}, '
-                    f'items={len(catalog_data.get("initialItems", [])) if catalog_data else 0}')
-
-                response.raise_for_status()
-
-                if catalog_data is None:
-                    logger.error(f'На странице {url} не найден блок <market-catalog> с данными каталога')
-                return catalog_data
-
-            except requests.RequestException as e:
-                self.last_request_time = time.time()
-                if attempt == REQUEST_RETRIES:
-                    self.error_count += 1
-                    logger.error(e)
-                    return None
-                logger.warning(f'Попытка {attempt} из {REQUEST_RETRIES} для {url} не удалась: {e}')
-                time.sleep(REQUEST_RETRY_DELAY_SECONDS * attempt)
-
-    def _wait_before_request(self):
-        delay = REQUEST_DELAY_SECONDS - (time.time() - self.last_request_time)
-        if delay > 0:
-            time.sleep(delay)
+        if catalog_data is None:
+            logger.error(f'На странице {url} не найден блок <market-catalog> с данными каталога')
+        return catalog_data
 
     def _scrape_page(self, url: str) -> List[Car]:
         catalog_data = self._fetch_catalog(url)

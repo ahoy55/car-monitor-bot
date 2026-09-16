@@ -91,11 +91,15 @@ def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
 def format_common_message(car: Car, price_text):
     # у новых машин пробега нет — строку тогда не показываем
     mileage_text = f"📏 {car.mileage}\n" if car.mileage else ""
+    # лоты внешних торгов ведут сразу на площадку, ссылка у них абсолютная
+    detail_url = car.detail_url or ""
+    if not detail_url.startswith(("http://", "https://")):
+        detail_url = f"{car.source.base_url}{detail_url}"
     return (
         f"🖥 Источник: <b>{car.source.name}</b>\n"
         f"🚛 Тип: <b>{_get_vehicle_type(car)}</b>\n"
         f"🚗 <b>{car.title}</b>\n"
         f"{mileage_text}"
         f"💰 {price_text}\n"
-        f"🔗 <a href='{car.source.base_url}{car.detail_url}'>Посмотреть на сайте</a>"
+        f"🔗 <a href='{detail_url}'>Посмотреть на сайте</a>"
     )

@@ -5,6 +5,7 @@ from bot.notifications import NotificationManager
 from models import Source, Car, CarType
 from base_source_processor import BaseSourceProcessor
 from source_processor_1 import SourceProcessor1
+from source_processor_2 import SourceProcessor2
 from bot.templates import PriceDrop
 
 logger = logging.getLogger(__name__)
@@ -24,7 +25,7 @@ def get_source_processor(car_types: List[CarType], source: Source) -> BaseSource
     if source.id == 1:
         return SourceProcessor1(car_types, source)
     elif source.id == 2:
-        pass
+        return SourceProcessor2(car_types, source)
 
 
 class SourceManager:
