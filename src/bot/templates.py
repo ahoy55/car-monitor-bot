@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from html import escape
 from typing import List
 
 from models import Car
@@ -35,7 +36,7 @@ def _get_vehicle_type(car):
     elif car.type == CarType.CARGO:
         return "грузовые"
     elif car.type == CarType.TRAILER:
-        return "прицеп"
+        return "прицепы"
     else:
         return None
 
@@ -48,7 +49,7 @@ def format_multiple_new_cars_messages(cars: list) -> list:
 
 
 def format_new_cars_message(car):
-    return format_common_message(car, f"{car.price}")
+    return format_common_message(car, escape(car.price or ""))
 
 
 def get_new_cars_title(count):
@@ -78,7 +79,7 @@ def format_price_drops_message(price_drop: PriceDrop):
     car = price_drop.car
     old_price = price_drop.old_price
     drop_percent = _calculate_drop_percent(old_price, car.price)
-    price_text = f"<s>{old_price}</s> → <b>{car.price}</b> (-{drop_percent:.01f}%)"
+    price_text = f"<s>{escape(old_price)}</s> → <b>{escape(car.price)}</b> (-{drop_percent:.01f}%)"
     return format_common_message(car, price_text)
 
 
@@ -88,18 +89,38 @@ def format_multiple_price_drops_messages(price_drops: List[PriceDrop]) -> list:
     messages[0] = get_price_drops_title(len(price_drops)) + messages[0]
     return messages
 
+
+def _monthly_payment_text(car: Car):
+    # Car.from_dict пишет "0", когда платежа нет; у лотов без полной цены
+    # платёж уже стоит на месте цены — второй раз его не показываем
+    monthly_payment = car.monthly_payment
+    if not monthly_payment or monthly_payment == "0" or monthly_payment == car.price:
+        return None
+    return escape(monthly_payment)
+
+
 def format_common_message(car: Car, price_text):
-    # у новых машин пробега нет — строку тогда не показываем
-    mileage_text = f"📏 {car.mileage}\n" if car.mileage else ""
     # лоты внешних торгов ведут сразу на площадку, ссылка у них абсолютная
     detail_url = car.detail_url or ""
     if not detail_url.startswith(("http://", "https://")):
         detail_url = f"{car.source.base_url}{detail_url}"
-    return (
-        f"🖥 Источник: <b>{car.source.name}</b>\n"
-        f"🚛 Тип: <b>{_get_vehicle_type(car)}</b>\n"
-        f"🚗 <b>{car.title}</b>\n"
-        f"{mileage_text}"
-        f"💰 {price_text}\n"
-        f"🔗 <a href='{detail_url}'>Посмотреть на сайте</a>"
-    )
+
+    title = f"🚗 <b>{escape(car.title or '')}</b>"
+    vehicle_type = _get_vehicle_type(car)
+    if vehicle_type:
+        title += f" · {vehicle_type}"
+
+    # у новых машин пробега нет, у части лотов нет года — пропускаем пустое
+    year = (car.year or "").removesuffix(" г.")
+    mileage = (car.mileage or "").removesuffix(".")
+    details = " · ".join(escape(part) for part in (car.city, year, mileage) if part)
+
+    monthly_payment = _monthly_payment_text(car)
+    price_line = f"💰 {price_text}" + (f" · {monthly_payment}" if monthly_payment else "")
+
+    lines = [title]
+    if details:
+        lines.append(f"📍 {details}")
+    lines.append(price_line)
+    lines.append(f"🔗 <a href='{escape(detail_url)}'>Подробнее</a> · {escape(car.source.name)}")
+    return "\n".join(lines)
