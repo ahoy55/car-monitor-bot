@@ -147,6 +147,13 @@ class NotificationManager:
             silent=True,
         )
 
+    async def notify_admin(self, text: str):
+        """Служебное сообщение админу в личный чат, не в канал"""
+        if not Config.ADMIN_CHAT_ID:
+            logger.warning(f"ADMIN_CHAT_ID не задан, алерт только в лог: {text}")
+            return
+        await self._send_one(None, text, chat_id=Config.ADMIN_CHAT_ID)
+
     async def _send_separately(self, message_thread_id: int, items: Sequence, car_of: Callable,
                                format_one: Callable, format_rest: Callable, silent: bool):
         separate_items = items[:MAX_SEPARATE_MESSAGES]
@@ -209,13 +216,13 @@ class NotificationManager:
             logger.warning(f"Не удалось загрузить фото {url}: {e}")
             return None
 
-    async def _send_one(self, message_thread_id: int, message: str, photo: Optional[bytes] = None,
-                        silent=False, preview=True) -> bool:
+    async def _send_one(self, message_thread_id: Optional[int], message: str, photo: Optional[bytes] = None,
+                        silent=False, preview=True, chat_id=None) -> bool:
         for attempt in range(1, SEND_RETRIES + 1):
             try:
                 logger.info(f"Отправка{' с фото' if photo else ''}: thread={message_thread_id}, len={len(message)}")
                 common = dict(
-                    chat_id=Config.CHANNEL_CHAT_ID,
+                    chat_id=chat_id or Config.CHANNEL_CHAT_ID,
                     # 0 означает "тема не задана": в обычную группу или канал
                     # message_thread_id слать нельзя, Telegram ответит ошибкой
                     message_thread_id=message_thread_id or None,
@@ -238,7 +245,8 @@ class NotificationManager:
                 if photo:
                     # фото не приняли — уведомление важнее картинки
                     logger.warning(f"Фото не принято ({e}), отправляем текстом")
-                    return await self._send_one(message_thread_id, message, silent=silent, preview=preview)
+                    return await self._send_one(message_thread_id, message, silent=silent, preview=preview,
+                                                chat_id=chat_id)
                 # наследник NetworkError, но повтор не поможет: неверный чат, разметка и т.п.
                 logger.error(f"Ошибка отправки: {e}")
                 return False

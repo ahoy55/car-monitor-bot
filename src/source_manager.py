@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from typing import Dict, Iterable, List
+from typing import Dict, Iterable, List, Optional
 
 from bot.notifications import NotificationManager
 from models import Source, Car, CarType
@@ -8,10 +8,19 @@ from base_source_processor import BaseSourceProcessor
 from source_processor_1 import SourceProcessor1
 from source_processor_2 import SourceProcessor2
 from bot.templates import PriceDrop
+from source_health import SourceHealth
 
 logger = logging.getLogger(__name__)
 
 EXISTING_CARS_CHUNK = 1000
+
+# Поиск новых идёт раз в минуту — разовый сетевой сбой не повод будить
+# админа, сообщаем после нескольких неудач подряд. Обновление цен идёт
+# дважды в день, поэтому о нём — сразу.
+NEW_CARS_FAILURES_TO_ALERT = 3
+UPDATED_CARS_FAILURES_TO_ALERT = 1
+# Обход, оборвавшийся на полпути, не падает, а просто приносит меньше машин
+UPDATED_CARS_MIN_SHARE = 0.5
 
 
 def _is_price_drop(old_price: str, new_price: str) -> bool:
@@ -55,19 +64,22 @@ class SourceManager:
         # могут запуститься одновременно. У процессора одна HTTP-сессия,
         # а вставка одних и тех же машин упала бы на уникальном car_id.
         self.lock = asyncio.Lock()
+        self.new_cars_health = SourceHealth(source.name, "поиск новых машин", NEW_CARS_FAILURES_TO_ALERT)
+        self.updated_cars_health = SourceHealth(source.name, "обновление цен", UPDATED_CARS_FAILURES_TO_ALERT)
+        self.last_updated_count = None
 
     async def process_new_cars(self):
         async with self.lock:
             logger.info(f"Поиск новых машин из источника: {self.source.name}")
+            errors_before = self.source_processor.error_count
             try:
                 car_list = await asyncio.to_thread(self.source_processor.scrape_new_cars)
             except Exception as e:
                 logger.error(f"❌ Ошибка сбора: {e}")
+                await self._report(self.new_cars_health, f"сбор упал с ошибкой: {e}")
                 return
 
-            if car_list is None:
-                logger.error("❌ Ошибка: scrape_new_cars() вернул None")
-                return
+            problem = self._check_scraped(car_list, errors_before)
 
             session = self.db_session()
             try:
@@ -91,21 +103,26 @@ class SourceManager:
             except Exception as e:
                 session.rollback()
                 logger.error(f"❌ Ошибка: {e}")
+                problem = problem or f"ошибка сохранения: {e}"
             finally:
                 session.close()
+
+            await self._report(self.new_cars_health, problem)
 
     async def process_updated_cars(self):
         async with self.lock:
             logger.info(f"Обновление цен на машины из источника: {self.source.name}")
+            errors_before = self.source_processor.error_count
             try:
                 car_list = await asyncio.to_thread(self.source_processor.scrape_updated_cars)
             except Exception as e:
                 logger.error(f"❌ Ошибка сбора: {e}")
+                await self._report(self.updated_cars_health, f"сбор упал с ошибкой: {e}")
                 return
 
-            if car_list is None:
-                logger.error("❌ Ошибка: scrape_updated_cars() вернул None")
-                return
+            problem = self._check_scraped(car_list, errors_before, self.last_updated_count)
+            if not problem:
+                self.last_updated_count = len(car_list)
 
             session = self.db_session()
             try:
@@ -149,8 +166,32 @@ class SourceManager:
             except Exception as e:
                 session.rollback()
                 logger.error(f"❌ Ошибка: {e}")
+                problem = problem or f"ошибка сохранения: {e}"
             finally:
                 session.close()
+
+            await self._report(self.updated_cars_health, problem)
+
+    def _check_scraped(self, car_list, errors_before: int, previous_count: Optional[int] = None) -> Optional[str]:
+        """Причина считать запуск неудачным или None, если всё в порядке."""
+        if not car_list:
+            return "не собрано ни одной машины"
+
+        failed_requests = self.source_processor.error_count - errors_before
+        if failed_requests:
+            return (f"запросов не прошло даже после повторов: {failed_requests}, "
+                    f"последняя ошибка: {self.source_processor.last_error}")
+
+        if previous_count and len(car_list) < previous_count * UPDATED_CARS_MIN_SHARE:
+            return f"собрано {len(car_list)} машин, в прошлый раз было {previous_count}"
+        return None
+
+    async def _report(self, health: SourceHealth, problem: Optional[str]):
+        alert = health.record(problem)
+        if problem:
+            logger.warning(f"{self.source.name}, {health.mode}: {problem}")
+        if alert:
+            await self.notification_manager.notify_admin(alert)
 
     async def notify_changes(self, price_drops: List[PriceDrop]):
         await self.notification_manager.notify_price_drop(price_drops)
