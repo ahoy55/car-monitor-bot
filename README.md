@@ -117,6 +117,7 @@ data/
 | `ADMIN_CHAT_ID` | нет | — | личный чат для алертов; без него алерты пишутся только в лог |
 | `USER_PASSWORD` | нет | — | пароль для `/start <пароль>` |
 | `NOTIFY_PRICE_DROP_PERCENT` | нет | `5` | порог снижения цены, % |
+| `NOTIFY_CAR_TYPES` | нет | `cargo,trailer` | типы, о которых уходят уведомления и итоги дня: `passenger`, `cargo`, `trailer`; остальные только собираются |
 | `NEW_CARS_HOURS` | нет | `10-18` | часы поиска новых (МСК) |
 | `NEW_CARS_INTERVAL_SECONDS` | нет | `0` | поле `second` cron: `0` — раз в минуту |
 | `UPDATE_CARS_HOURS` | нет | `11,15` | часы обновления цен (МСК) |

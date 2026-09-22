@@ -240,6 +240,13 @@ class SourceManager:
 
     async def _announce_new_cars(self, session, cars: List[Car]):
         """Отправляет новые машины и запоминает id постов для ссылок из снижений."""
+        muted = [car for car in cars if not Config.is_notified_type(car.type)]
+        if muted:
+            logger.info(f"{self.source.name}: новых машин без уведомления (тип отключён): {len(muted)}")
+        cars = [car for car in cars if Config.is_notified_type(car.type)]
+        if not cars:
+            return
+
         posted = await self.notify_new(cars)
         for car in cars:
             if car.car_id in posted:
@@ -254,6 +261,7 @@ class SourceManager:
         histories = _load_price_histories(session, {car.car_id for car, _ in changed_cars})
         price_drops = []
         below_threshold = 0
+        muted_type = 0
 
         for car, old_price in changed_cars:
             history = histories.setdefault(car.car_id, [])
@@ -289,12 +297,19 @@ class SourceManager:
             if get_drop_percent(price_drop) < Config.NOTIFY_PRICE_DROP_PERCENT:
                 below_threshold += 1
                 continue
+            # Тип без уведомлений: отправную точку не двигаем — если тип
+            # включат обратно, снижение посчитается от цены, которую видели.
+            if not Config.is_notified_type(car.type):
+                muted_type += 1
+                continue
 
             entry.is_reference = True
             price_drops.append(price_drop)
 
         if below_threshold:
             logger.info(f"Снижений меньше {Config.NOTIFY_PRICE_DROP_PERCENT}%: {below_threshold} — без уведомления")
+        if muted_type:
+            logger.info(f"{self.source.name}: снижений без уведомления (тип отключён): {muted_type}")
         return price_drops
 
     def _check_scraped(self, car_list, errors_before: int, previous_count: Optional[int] = None) -> Optional[str]:

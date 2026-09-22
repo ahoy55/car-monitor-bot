@@ -6,6 +6,7 @@ from typing import Dict, List, Tuple
 import pytz
 
 from bot.templates import _calculate_drop_percent, _format_percent, absolute_url
+from config import Config
 from models import Car, CarType, PriceHistory, Source
 
 MOSCOW = pytz.timezone('Europe/Moscow')
@@ -40,7 +41,9 @@ def _new_cars(session, start: datetime, end: datetime) -> Dict[int, Counter]:
     rows = (session.query(Car.source_id, Car.type)
             .filter(Car.created_at >= start, Car.created_at < end))
     for source_id, car_type in rows:
-        counts[source_id][car_type] += 1
+        # в итогах — то же, что в каналах: типы без уведомлений не считаем
+        if Config.is_notified_type(car_type):
+            counts[source_id][car_type] += 1
     return counts
 
 
@@ -70,7 +73,7 @@ def _price_drops(session, start: datetime, end: datetime) -> List[Tuple[Car, str
         rows = history[row.car_id]
         index = rows.index(row)
         car = cars.get(row.car_id)
-        if index == 0 or car is None:
+        if index == 0 or car is None or not Config.is_notified_type(car.type):
             continue
         previous = rows[index - 1].price
         percent = _calculate_drop_percent(previous, row.price)

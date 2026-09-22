@@ -43,6 +43,15 @@ class Config:
     # Уведомления
     NOTIFY_PRICE_DROP_PERCENT = int(os.getenv("NOTIFY_PRICE_DROP_PERCENT", 5))
     NOTIFY_NEW_CARS = os.getenv("NOTIFY_NEW_CARS", "true").lower() == "true"
+    # Типы техники, о которых уходят уведомления: passenger, cargo, trailer.
+    # Остальные по-прежнему собираются и хранятся вместе с историей цен —
+    # вернуть их в канал можно одной настройкой, без пропусков в истории.
+    NOTIFY_CAR_TYPES = {t.strip() for t in os.getenv("NOTIFY_CAR_TYPES", "cargo,trailer").split(",") if t.strip()}
+
+    @classmethod
+    def is_notified_type(cls, car_type) -> bool:
+        # машины без типа не прячем: непонятно, к какому разделу они относятся
+        return car_type is None or getattr(car_type, "value", car_type) in cls.NOTIFY_CAR_TYPES
 
     HEADERS = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
