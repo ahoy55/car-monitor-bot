@@ -4,7 +4,7 @@ from typing import List, Optional, Tuple
 
 from base_source_processor import BaseSourceProcessor
 from models import Car, Source, CarType
-from parsing_utils import format_number, format_price
+from parsing_utils import format_number, format_price, format_year
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ def _parse_item(item: dict) -> Optional[dict]:
             'price': format_price(_to_int(item.get('current_price')), ' ₽'),
             'city': (item.get('city') or {}).get('name'),
             'mileage': f'{format_number(mileage)} км.' if mileage else None,
-            'year': f'{year} г.' if year else None,
+            'year': format_year(year),
             'detail_url': f'/sale/view-{item["id"]}',
             'image_url': f'{MEDIA_BASE_URL}/{cover.lstrip("/")}' if cover else '',
             'flags': flags,

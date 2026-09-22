@@ -23,6 +23,7 @@ NEW_CARS_FAILURES_TO_ALERT = 3
 UPDATED_CARS_FAILURES_TO_ALERT = 1
 # Обход, оборвавшийся на полпути, не падает, а просто приносит меньше машин
 UPDATED_CARS_MIN_SHARE = 0.5
+ERROR_TEXT_LIMIT = 300
 
 
 def _is_price_drop(old_price: str, new_price: str) -> bool:
@@ -45,6 +46,14 @@ def _find_existing_cars(session, car_ids: Iterable[str]) -> Dict[str, Car]:
         for car in session.query(Car).filter(Car.car_id.in_(chunk)):
             existing[car.car_id] = car
     return existing
+
+
+def _short_error(error: Exception) -> str:
+    """Суть ошибки для алерта. Текст ошибки SQLAlchemy содержит весь SQL
+    с параметрами — тысячи символов, и Telegram такой алерт не принимает."""
+    original = getattr(error, 'orig', None) or error
+    text = ' '.join(str(original).split())
+    return text[:ERROR_TEXT_LIMIT] + ('…' if len(text) > ERROR_TEXT_LIMIT else '')
 
 
 def _load_price_histories(session, car_ids: Iterable[str]) -> Dict[str, List[PriceHistory]]:
@@ -104,10 +113,11 @@ class SourceManager:
 
     async def process_new_cars(self):
         if self.lock.locked():
-            # Источник занят полным обходом. Не ждём его: иначе поиск новых
-            # по всем источникам стоял бы на паузе минут двадцать. Новые машины
-            # этого источника объявит сам обход — см. process_updated_cars.
-            logger.info(f"{self.source.name}: идёт обновление цен, поиск новых пропущен")
+            # Источник занят другим сбором — обычно полным обходом, иногда
+            # поиском новых, запущенным при старте. Не ждём его: иначе поиск
+            # новых по всем источникам стоял бы на паузе минут двадцать. Новые
+            # машины, найденные обходом, он объявит сам — см. process_updated_cars.
+            logger.info(f"{self.source.name}: источник занят другим сбором, поиск новых пропущен")
             return
 
         async with self.lock:
@@ -117,7 +127,7 @@ class SourceManager:
                 car_list = await asyncio.to_thread(self.source_processor.scrape_new_cars)
             except Exception as e:
                 logger.error(f"❌ Ошибка сбора: {e}")
-                await self._report(self.new_cars_health, f"сбор упал с ошибкой: {e}")
+                await self._report(self.new_cars_health, f"сбор упал с ошибкой: {_short_error(e)}")
                 return
 
             problem = self._check_scraped(car_list, errors_before)
@@ -145,7 +155,7 @@ class SourceManager:
             except Exception as e:
                 session.rollback()
                 logger.error(f"❌ Ошибка: {e}")
-                problem = problem or f"ошибка сохранения: {e}"
+                problem = problem or f"ошибка сохранения: {_short_error(e)}"
             finally:
                 session.close()
 
@@ -159,7 +169,7 @@ class SourceManager:
                 car_list = await asyncio.to_thread(self.source_processor.scrape_updated_cars)
             except Exception as e:
                 logger.error(f"❌ Ошибка сбора: {e}")
-                await self._report(self.updated_cars_health, f"сбор упал с ошибкой: {e}")
+                await self._report(self.updated_cars_health, f"сбор упал с ошибкой: {_short_error(e)}")
                 return
 
             problem = self._check_scraped(car_list, errors_before, self.last_updated_count)
@@ -222,7 +232,7 @@ class SourceManager:
             except Exception as e:
                 session.rollback()
                 logger.error(f"❌ Ошибка: {e}")
-                problem = problem or f"ошибка сохранения: {e}"
+                problem = problem or f"ошибка сохранения: {_short_error(e)}"
             finally:
                 session.close()
 

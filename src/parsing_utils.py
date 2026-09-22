@@ -1,3 +1,4 @@
+import re
 from html import unescape
 from typing import Optional
 
@@ -24,3 +25,11 @@ def format_price(value, suffix: str) -> Optional[str]:
 
 def normalize(text) -> str:
     return ' '.join(unescape(str(text or '')).split())
+
+
+def format_year(value) -> Optional[str]:
+    """Год выпуска в виде "2024 г.". Сайты иногда пишут диапазон или
+    приписку ("2024-2025", "2023, рестайлинг") — берём первый год."""
+    # не выдираем год из длинного числа: '19999' — не год
+    match = re.search(r'(?<!\d)(19|20)\d{2}(?!\d)', str(value or ''))
+    return f'{match.group(0)} г.' if match else None
