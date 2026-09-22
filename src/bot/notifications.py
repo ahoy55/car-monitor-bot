@@ -2,7 +2,7 @@ import asyncio
 import io
 import logging
 from dataclasses import dataclass
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 import httpx
 from PIL import Image, UnidentifiedImageError
@@ -115,12 +115,12 @@ class NotificationManager:
         self.bot = bot
         self.db_session = db_session()
 
-    async def notify_price_drop(self, price_drops: List[PriceDrop]):
+    async def notify_price_drop(self, price_drops: List[PriceDrop], message_thread_id: int):
         """Уведомление о снижении цены: сначала самые большие скидки.
         Порог уже применён при записи истории цен — здесь только отправка."""
         drops = sorted(price_drops, key=get_drop_percent, reverse=True)
         await self._send_separately(
-            message_thread_id=Config.PRICE_DROP_THREAD_ID,
+            message_thread_id=message_thread_id,
             items=drops,
             car_of=lambda drop: drop.car,
             format_one=format_price_drops_message,
@@ -128,10 +128,11 @@ class NotificationManager:
             silent=False,
         )
 
-    async def notify_new_car(self, cars: List[Car]):
-        """Уведомление о новом автомобиле"""
-        await self._send_separately(
-            message_thread_id=Config.NEW_THREAD_ID,
+    async def notify_new_car(self, cars: List[Car], message_thread_id: int) -> Dict[str, int]:
+        """Уведомление о новом автомобиле. Возвращает car_id -> id поста для
+        машин, ушедших отдельным сообщением: на них потом ссылаются снижения."""
+        return await self._send_separately(
+            message_thread_id=message_thread_id,
             items=cars,
             car_of=lambda car: car,
             format_one=format_separate_new_car_message,
@@ -141,6 +142,10 @@ class NotificationManager:
             silent=True,
         )
 
+    async def notify_summary(self, text: str):
+        """Итоги дня — в общий чат группы, без темы"""
+        await self._send_one(None, text, preview=False)
+
     async def notify_admin(self, text: str):
         """Служебное сообщение админу в личный чат, не в канал"""
         if not Config.ADMIN_CHAT_ID:
@@ -149,17 +154,21 @@ class NotificationManager:
         await self._send_one(None, text, chat_id=Config.ADMIN_CHAT_ID)
 
     async def _send_separately(self, message_thread_id: int, items: Sequence, car_of: Callable,
-                               format_one: Callable, format_rest: Callable, silent: bool):
+                               format_one: Callable, format_rest: Callable, silent: bool) -> Dict[str, int]:
         separate_items = items[:MAX_SEPARATE_MESSAGES]
         rest_items = items[MAX_SEPARATE_MESSAGES:]
 
+        posted = {}
         failed = 0
         for index, item in enumerate(separate_items):
             if index:
                 await asyncio.sleep(SEND_DELAY_SECONDS)
             message = format_one(item)
             photo = await self._download_photo(car_of(item)) if len(message) <= CAPTION_LIMIT else None
-            if not await self._send_one(message_thread_id, message, photo, silent=silent):
+            message_id = await self._send_one(message_thread_id, message, photo, silent=silent)
+            if message_id:
+                posted[car_of(item).car_id] = message_id
+            else:
                 failed += 1
         if failed:
             logger.error(f"Не отправлено {failed} из {len(separate_items)} сообщений, thread={message_thread_id}")
@@ -167,6 +176,7 @@ class NotificationManager:
         if rest_items:
             await asyncio.sleep(SEND_DELAY_SECONDS)
             await self._send_digest(message_thread_id, format_rest(rest_items), silent)
+        return posted
 
     async def _send_digest(self, message_thread_id: int, messages: list, silent: bool):
         """Сводка из многих машин. Превью ссылки в ней отключаем: Telegram
@@ -211,7 +221,8 @@ class NotificationManager:
             return None
 
     async def _send_one(self, message_thread_id: Optional[int], message: str, photo: Optional[bytes] = None,
-                        silent=False, preview=True, chat_id=None) -> bool:
+                        silent=False, preview=True, chat_id=None) -> Optional[int]:
+        """Отправляет сообщение и возвращает его id, при неудаче — None."""
         for attempt in range(1, SEND_RETRIES + 1):
             try:
                 logger.info(f"Отправка{' с фото' if photo else ''}: thread={message_thread_id}, len={len(message)}")
@@ -230,7 +241,7 @@ class NotificationManager:
                 else:
                     result = await self.bot.send_message(text=message, disable_web_page_preview=not preview, **common)
                 logger.info(f"Отправлено: msg_id={result.message_id}, thread={result.message_thread_id}")
-                return True
+                return result.message_id
 
             except RetryAfter as e:
                 # e удаляется по выходу из except — сохраняем для лога ниже
@@ -243,19 +254,19 @@ class NotificationManager:
                                                 chat_id=chat_id)
                 # наследник NetworkError, но повтор не поможет: неверный чат, разметка и т.п.
                 logger.error(f"Ошибка отправки: {e}")
-                return False
+                return None
             except NetworkError as e:
                 # При таймауте Telegram мог сообщение всё же принять, и повтор
                 # даст дубль. Дубль в канале лучше потерянного уведомления.
                 error, delay = e, SEND_RETRY_DELAY_SECONDS * attempt
             except TelegramError as e:
                 logger.error(f"Ошибка отправки: {e}")
-                return False
+                return None
 
             if attempt == SEND_RETRIES:
                 logger.error(f"Ошибка отправки после {SEND_RETRIES} попыток: {error}")
-                return False
+                return None
             logger.warning(f"Попытка {attempt} из {SEND_RETRIES} не удалась ({error}), повтор через {delay} с")
             await asyncio.sleep(delay)
 
-        return False
+        return None

@@ -23,6 +23,10 @@ class Source(Base):
     base_url = Column(String(500))
     template_url = Column(String(1000))
     is_active = Column(Boolean, default=True)
+    # Темы группы для этого источника. Пусто — общие NEW_THREAD_ID и
+    # PRICE_DROP_THREAD_ID из окружения.
+    new_thread_id = Column(Integer, nullable=True)
+    price_drop_thread_id = Column(Integer, nullable=True)
 
     # Связь one-to-many
     cars = relationship("Car", back_populates="source", cascade="all, delete-orphan")
@@ -70,6 +74,8 @@ class Car(Base):
     flags = Column(Text)
     detail_url = Column(String(500))
     image_url = Column(String(500))
+    # id поста о появлении машины в группе — на него ссылаются снижения цен
+    post_message_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.now)
 
     # Внешний ключ к источнику

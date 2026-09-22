@@ -98,9 +98,12 @@ class DbInitializer():
         в уже существующие не добавляет — дописываем их сами, идемпотентно."""
         with self.engine.begin() as conn:
             conn.execute(text("ALTER TABLE cars ADD COLUMN IF NOT EXISTS brand VARCHAR(100)"))
+            conn.execute(text("ALTER TABLE cars ADD COLUMN IF NOT EXISTS post_message_id INTEGER"))
             conn.execute(text(
                 "ALTER TABLE price_history ADD COLUMN IF NOT EXISTS is_reference BOOLEAN NOT NULL DEFAULT FALSE"))
-        logger.info("✅ Колонки таблиц cars и price_history проверены")
+            conn.execute(text("ALTER TABLE sources ADD COLUMN IF NOT EXISTS new_thread_id INTEGER"))
+            conn.execute(text("ALTER TABLE sources ADD COLUMN IF NOT EXISTS price_drop_thread_id INTEGER"))
+        logger.info("✅ Колонки таблиц cars, price_history и sources проверены")
 
     def add_telegram_admin(self):
         # Добавляем администратора, если указан chat_id
@@ -140,10 +143,12 @@ class DbInitializer():
                         ('name', source_data['name']),
                         ('base_url', source_data['base_url']),
                         ('template_url', source_data['template_url']),
+                        ('new_thread_id', source_data.get('new_thread_id')),
+                        ('price_drop_thread_id', source_data.get('price_drop_thread_id')),
                     ) if getattr(source, field) != value
                 ]
                 for field in changed:
-                    setattr(source, field, source_data[field])
+                    setattr(source, field, source_data.get(field))
 
                 if changed:
                     logger.info(f'♻️  Источник {source.name} обновлён: {", ".join(changed)}')
@@ -155,7 +160,9 @@ class DbInitializer():
                         source_id=source_id,
                         name=source_data['name'],
                         base_url=source_data['base_url'],
-                        template_url=source_data['template_url']
+                        template_url=source_data['template_url'],
+                        new_thread_id=source_data.get('new_thread_id'),
+                        price_drop_thread_id=source_data.get('price_drop_thread_id'),
                     )
                 )
 
