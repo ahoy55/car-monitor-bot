@@ -83,6 +83,7 @@ src/
   base_source_processor.py  общий HTTP: паузы между запросами, повторы, таймауты
   source_processor_1.py     разбор первого источника
   source_processor_2.py     разбор второго источника
+  source_processor_3.py     разбор третьего источника (JSON API)
   parsing_utils.py          форматирование цен и чисел
   models.py                 модели SQLAlchemy
   config.py                 настройки из переменных окружения
