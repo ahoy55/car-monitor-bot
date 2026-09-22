@@ -7,6 +7,7 @@ from models import Source, Car, CarType, PriceHistory
 from base_source_processor import BaseSourceProcessor
 from source_processor_1 import SourceProcessor1
 from source_processor_2 import SourceProcessor2
+from source_processor_3 import SourceProcessor3
 from bot.templates import PriceDrop, get_drop_percent
 from config import Config
 from source_health import SourceHealth
@@ -78,6 +79,8 @@ def get_source_processor(car_types: List[CarType], source: Source) -> BaseSource
         return SourceProcessor1(car_types, source)
     elif source.id == 2:
         return SourceProcessor2(car_types, source)
+    elif source.id == 3:
+        return SourceProcessor3(car_types, source)
 
 
 class SourceManager:
@@ -254,13 +257,15 @@ class SourceManager:
 
     def _check_scraped(self, car_list, errors_before: int, previous_count: Optional[int] = None) -> Optional[str]:
         """Причина считать запуск неудачным или None, если всё в порядке."""
-        if not car_list:
-            return "не собрано ни одной машины"
-
+        # Сначала неудачные запросы: пустой сбор обычно их следствие,
+        # и в алерте полезнее текст ошибки, чем просто "0 машин".
         failed_requests = self.source_processor.error_count - errors_before
         if failed_requests:
             return (f"запросов не прошло даже после повторов: {failed_requests}, "
                     f"последняя ошибка: {self.source_processor.last_error}")
+
+        if not car_list:
+            return "не собрано ни одной машины"
 
         if previous_count and len(car_list) < previous_count * UPDATED_CARS_MIN_SHARE:
             return f"собрано {len(car_list)} машин, в прошлый раз было {previous_count}"
