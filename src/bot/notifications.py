@@ -36,8 +36,9 @@ SEND_READ_TIMEOUT_SECONDS = 20
 MAX_SEPARATE_MESSAGES = 20
 # место под подпись "Часть N из M" в сообщении сводки
 PART_LABEL_RESERVE = 40
-# лимит Telegram на подпись к фото
+# лимиты Telegram: подпись к фото и текст сообщения
 CAPTION_LIMIT = 1024
+MESSAGE_LIMIT = 4096
 IMAGE_TIMEOUT_SECONDS = 15
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
 
@@ -148,6 +149,9 @@ class NotificationManager:
 
     async def notify_admin(self, text: str):
         """Служебное сообщение админу в личный чат, не в канал"""
+        if len(text) > MESSAGE_LIMIT:
+            # без обрезки Telegram отклонит алерт целиком — «Message is too long»
+            text = text[:MESSAGE_LIMIT - 1] + '…'
         if not Config.ADMIN_CHAT_ID:
             logger.warning(f"ADMIN_CHAT_ID не задан, алерт только в лог: {text}")
             return

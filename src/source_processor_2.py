@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 
 from base_source_processor import BaseSourceProcessor
 from models import Car, Source, CarType
-from parsing_utils import format_number, format_price, normalize
+from parsing_utils import format_number, format_price, format_year, normalize
 
 logger = logging.getLogger(__name__)
 
@@ -88,8 +88,9 @@ def _parse_props(card) -> dict:
         if field == 'mileage':
             value = f'{format_number(value) or value} км.'
         elif field == 'year':
-            value = f'{value} г.'
-        parsed[field] = value
+            value = format_year(value)
+        if value:
+            parsed[field] = value
     return parsed
 
 

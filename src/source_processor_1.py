@@ -8,7 +8,7 @@ from bs4 import BeautifulSoup
 
 from base_source_processor import BaseSourceProcessor
 from models import Car, Source, CarType
-from parsing_utils import format_number, format_price, normalize
+from parsing_utils import format_number, format_price, format_year, normalize
 
 logger = logging.getLogger(__name__)
 
@@ -45,10 +45,12 @@ def _parse_props(item: dict) -> dict:
         if not field or not value:
             continue
         if field == 'year':
-            value = f'{value} г.'
+            value = format_year(value)
         elif field == 'mileage':
             value = f'{format_number(value) or value} км.'
-        parsed[field] = value
+        # нераспознанный год не записываем: его ещё может дать propsBU ниже
+        if value:
+            parsed[field] = value
 
     for prop in (item.get('propsBU') or []) + (item.get('autoProps') or []):
         text = normalize(prop)

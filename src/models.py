@@ -1,4 +1,5 @@
 import enum
+import logging
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, Enum
@@ -6,6 +7,8 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
 Base = declarative_base()
+
+logger = logging.getLogger(__name__)
 
 
 class CarType(enum.Enum):
@@ -45,7 +48,7 @@ class Car(Base):
         else:
             monthly_payment = '0'
 
-        return cls(
+        car = cls(
             car_id=car_data.get('id'),
             type=car_data.get('type'),
             title=car_data.get('title'),
@@ -60,6 +63,19 @@ class Car(Base):
             image_url=car_data.get('image_url'),
             source=source  # привязываем источник
         )
+        car._fit_to_columns()
+        return car
+
+    def _fit_to_columns(self):
+        """Обрезает строки до длины колонки. Весь обход источника пишется
+        одной транзакцией, и одно слишком длинное поле одной машины иначе
+        откатывает сохранение всех машин и всех изменений цен."""
+        for column in self.__table__.columns:
+            limit = getattr(column.type, 'length', None)
+            value = getattr(self, column.key, None)
+            if limit and isinstance(value, str) and len(value) > limit:
+                logger.warning(f'{self.car_id}: {column.key} длиннее {limit} символов, обрезано: {value!r}')
+                setattr(self, column.key, value[:limit])
 
     id = Column(Integer, primary_key=True)
     car_id = Column(String(50), unique=True, index=True)
