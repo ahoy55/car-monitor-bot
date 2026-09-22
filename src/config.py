@@ -30,6 +30,9 @@ class Config:
 
     WORK_DAYS = "mon-sun" if IS_DEBUG else os.getenv("WORK_DAYS", "mon-fri")
 
+    # час (МСК), когда в общий чат группы уходят итоги дня
+    DAILY_SUMMARY_HOUR = os.getenv("DAILY_SUMMARY_HOUR", "19")
+
     # Telegram Bot
     TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
     ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")

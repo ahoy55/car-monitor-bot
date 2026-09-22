@@ -5,6 +5,7 @@ from typing import List, Optional
 
 from models import Car
 from models import CarType
+from config import Config
 from parsing_utils import format_number
 
 
@@ -45,6 +46,16 @@ def _get_drop_amount(price_drop: PriceDrop) -> int:
     old_price = ''.join(c for c in price_drop.old_price if c.isdigit())
     new_price = ''.join(c for c in price_drop.car.price if c.isdigit())
     return int(old_price or 0) - int(new_price or 0)
+
+
+def post_url(message_id: Optional[int]) -> Optional[str]:
+    """Ссылка на сообщение в группе. Работает и между темами — в отличие
+    от ответа, который Telegram разрешает только внутри одной темы."""
+    chat_id = str(Config.CHANNEL_CHAT_ID)
+    # у супергрупп id вида -100XXXXXXXXXX, в ссылке — только XXXXXXXXXX
+    if not message_id or not chat_id.startswith("-100"):
+        return None
+    return f"https://t.me/c/{chat_id[4:]}/{message_id}"
 
 
 def absolute_url(car: Car, url: str) -> str:
@@ -138,7 +149,7 @@ def format_price_drops_message(price_drop: PriceDrop):
     drop_percent = _format_percent(get_drop_percent(price_drop))
     headline = f"📉 <b>−{format_number(_get_drop_amount(price_drop))} ₽ (−{drop_percent}%)</b>\n"
     price_text = f"<s>{escape(price_drop.old_price)}</s> → <b>{escape(car.price)}</b>"
-    message = headline + format_common_message(car, price_text)
+    message = headline + format_common_message(car, price_text, post_url(car.post_message_id))
 
     history_line = _price_history_line(price_drop)
     if history_line:
@@ -177,7 +188,7 @@ def _monthly_payment_text(car: Car):
     return escape(monthly_payment)
 
 
-def format_common_message(car: Car, price_text):
+def format_common_message(car: Car, price_text, first_post_url: Optional[str] = None):
     detail_url = absolute_url(car, car.detail_url)
 
     tags = " ".join(tag for tag in (_hashtag(_get_vehicle_type(car)), _hashtag(car.brand, upper=True)) if tag)
@@ -196,5 +207,8 @@ def format_common_message(car: Car, price_text):
     if details:
         lines.append(f"📍 {details}")
     lines.append(price_line)
-    lines.append(f"🔗 <a href='{escape(detail_url)}'>Подробнее</a> · {escape(car.source.name)}")
+    links = [f"<a href='{escape(detail_url)}'>Подробнее</a>"]
+    if first_post_url:
+        links.append(f"<a href='{escape(first_post_url)}'>📌 Первый пост</a>")
+    lines.append(f"🔗 {' · '.join(links)} · {escape(car.source.name)}")
     return "\n".join(lines)

@@ -98,6 +98,9 @@ class SourceManager:
         self.new_cars_health = SourceHealth(source.name, "поиск новых машин", NEW_CARS_FAILURES_TO_ALERT)
         self.updated_cars_health = SourceHealth(source.name, "обновление цен", UPDATED_CARS_FAILURES_TO_ALERT)
         self.last_updated_count = None
+        # у каждого источника свои темы; без них — общие из окружения
+        self.new_thread_id = source.new_thread_id or Config.NEW_THREAD_ID
+        self.price_drop_thread_id = source.price_drop_thread_id or Config.PRICE_DROP_THREAD_ID
 
     async def process_new_cars(self):
         async with self.lock:
@@ -130,7 +133,11 @@ class SourceManager:
                 session.commit()
 
                 if new_car_list:
-                    await self.notify_new(new_car_list)
+                    posted = await self.notify_new(new_car_list)
+                    for car in new_car_list:
+                        if car.car_id in posted:
+                            car.post_message_id = posted[car.car_id]
+                    session.commit()
 
             except Exception as e:
                 session.rollback()
@@ -279,7 +286,7 @@ class SourceManager:
             await self.notification_manager.notify_admin(alert)
 
     async def notify_changes(self, price_drops: List[PriceDrop]):
-        await self.notification_manager.notify_price_drop(price_drops)
+        await self.notification_manager.notify_price_drop(price_drops, self.price_drop_thread_id)
 
-    async def notify_new(self, cars: List[Car]):
-        await self.notification_manager.notify_new_car(cars)
+    async def notify_new(self, cars: List[Car]) -> Dict[str, int]:
+        return await self.notification_manager.notify_new_car(cars, self.new_thread_id)

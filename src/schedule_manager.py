@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from datetime import datetime
 
 import pytz
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -10,6 +11,8 @@ from models import Source
 from source_manager import SourceManager
 from config import Config
 from bot.bot import TelegramBot
+from bot.notifications import NotificationManager
+from daily_summary import build_daily_summary
 
 logger = logging.getLogger(__name__)
 timezone = pytz.timezone('Europe/Moscow')
@@ -59,6 +62,16 @@ class ScheduleManager:
         for source_manager in self.source_managers:
             await source_manager.process_new_cars()
 
+    async def process_daily_summary(self):
+        session = self.db_session()
+        try:
+            text = build_daily_summary(session, datetime.now(timezone).date())
+            await NotificationManager(self.bot.get_bot(), self.db_session).notify_summary(text)
+        except Exception as e:
+            logger.error(f"❌ Ошибка итогов дня: {e}")
+        finally:
+            session.close()
+
     async def process_initial(self):
         try:
             await self.process_cars_new()
@@ -90,6 +103,18 @@ class ScheduleManager:
                 timezone=timezone
             ),
             misfire_grace_time=30
+        )
+
+        self.scheduler.add_job(
+            id="daily_summary",
+            func=self.process_daily_summary,
+            trigger=CronTrigger(
+                day_of_week=Config.WORK_DAYS,
+                hour=Config.DAILY_SUMMARY_HOUR,
+                minute=0,
+                timezone=timezone
+            ),
+            misfire_grace_time=3600
         )
 
         try:
