@@ -103,6 +103,13 @@ class SourceManager:
         self.price_drop_thread_id = source.price_drop_thread_id or Config.PRICE_DROP_THREAD_ID
 
     async def process_new_cars(self):
+        if self.lock.locked():
+            # Источник занят полным обходом. Не ждём его: иначе поиск новых
+            # по всем источникам стоял бы на паузе минут двадцать. Новые машины
+            # этого источника объявит сам обход — см. process_updated_cars.
+            logger.info(f"{self.source.name}: идёт обновление цен, поиск новых пропущен")
+            return
+
         async with self.lock:
             logger.info(f"Поиск новых машин из источника: {self.source.name}")
             errors_before = self.source_processor.error_count
@@ -133,11 +140,7 @@ class SourceManager:
                 session.commit()
 
                 if new_car_list:
-                    posted = await self.notify_new(new_car_list)
-                    for car in new_car_list:
-                        if car.car_id in posted:
-                            car.post_message_id = posted[car.car_id]
-                    session.commit()
+                    await self._announce_new_cars(session, new_car_list)
 
             except Exception as e:
                 session.rollback()
@@ -166,8 +169,12 @@ class SourceManager:
             session = self.db_session()
             try:
                 source = session.query(Source).get(self.source.id)
+                # Первый обход нового источника незнаком со всеми его машинами —
+                # их добавляем молча, иначе в канал ушли бы тысячи "новых".
+                source_was_filled = session.query(Car.id).filter(Car.source_id == self.source.id).first() is not None
                 known_cars = _find_existing_cars(session, (car.car_id for car in car_list))
                 changed_cars = []
+                new_car_list = []
 
                 for car in car_list:
                     existing_car = known_cars.get(car.car_id)
@@ -193,11 +200,21 @@ class SourceManager:
                     else:
                         car.source = source
                         known_cars[car.car_id] = car
+                        new_car_list.append(car)
                         session.add(car)
                         session.add(_starting_price_entry(car))
 
                 price_drops = self._record_price_changes(session, changed_cars)
                 session.commit()
+
+                # Машины, появившиеся на сайте за время обхода, поиск новых уже
+                # не увидит: они в базе. Если их не объявить здесь, в канал
+                # они не попадут никогда.
+                if new_car_list and source_was_filled:
+                    logger.info(f"{self.source.name}: обновление цен нашло новых машин: {len(new_car_list)}")
+                    await self._announce_new_cars(session, new_car_list)
+                elif new_car_list:
+                    logger.info(f"{self.source.name}: первое заполнение, добавлено молча: {len(new_car_list)}")
 
                 if price_drops:
                     await self.notify_changes(price_drops)
@@ -210,6 +227,14 @@ class SourceManager:
                 session.close()
 
             await self._report(self.updated_cars_health, problem)
+
+    async def _announce_new_cars(self, session, cars: List[Car]):
+        """Отправляет новые машины и запоминает id постов для ссылок из снижений."""
+        posted = await self.notify_new(cars)
+        for car in cars:
+            if car.car_id in posted:
+                car.post_message_id = posted[car.car_id]
+        session.commit()
 
     def _record_price_changes(self, session, changed_cars) -> List[PriceDrop]:
         """Пишет смены цен в историю и отбирает снижения для уведомления."""
