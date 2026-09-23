@@ -21,9 +21,14 @@ class Config:
     USER_PASSWORD = os.getenv("USER_PASSWORD", "")
 
     # Scraper
-    UPDATE_CARS_HOURS = os.getenv("UPDATE_CARS_HOURS", "11,15")
+    # Полный обход всех источников занимает ~20 минут и ~350 запросов,
+    # поэтому проходы раз в два часа: снижение цены попадает в группу в
+    # пределах часа-двух, а нагрузка на сайты растёт незаметно — поиск
+    # новых и так делает ~6600 запросов за рабочий день.
+    UPDATE_CARS_HOURS = os.getenv("UPDATE_CARS_HOURS", "10,12,14,16,18")
 
-    NEW_CARS_HOURS = "0-23" if IS_DEBUG else os.getenv("NEW_CARS_HOURS", "10-18")
+    # машины выкладывают в рабочий день, с 9 до 18
+    NEW_CARS_HOURS = "0-23" if IS_DEBUG else os.getenv("NEW_CARS_HOURS", "9-18")
 
     # поле second cron-триггера: "0" — раз в минуту, "*/5" — каждые 5 секунд
     NEW_CARS_INTERVAL_SECONDS = "*/5" if IS_DEBUG else os.getenv("NEW_CARS_INTERVAL_SECONDS", "0")

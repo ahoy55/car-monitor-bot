@@ -18,7 +18,7 @@ EXISTING_CARS_CHUNK = 1000
 
 # Поиск новых идёт раз в минуту — разовый сетевой сбой не повод будить
 # админа, сообщаем после нескольких неудач подряд. Обновление цен идёт
-# дважды в день, поэтому о нём — сразу.
+# несколько раз в день, поэтому о нём — сразу.
 NEW_CARS_FAILURES_TO_ALERT = 3
 UPDATED_CARS_FAILURES_TO_ALERT = 1
 # Обход, оборвавшийся на полпути, не падает, а просто приносит меньше машин
@@ -198,8 +198,6 @@ class SourceManager:
                         old_price = existing_car.price
 
                         if old_price != new_price:
-                            print(f'{old_price} {new_price}')
-
                             existing_car.price = new_price
                             existing_car.monthly_payment = car.monthly_payment
                             existing_car.city = car.city
