@@ -116,7 +116,8 @@ class NotificationManager:
         self.bot = bot
         self.db_session = db_session()
 
-    async def notify_price_drop(self, price_drops: List[PriceDrop], message_thread_id: int):
+    async def notify_price_drop(self, price_drops: List[PriceDrop], message_thread_id: int,
+                                silent: bool = False):
         """Уведомление о снижении цены: сначала самые большие скидки.
         Порог уже применён при записи истории цен — здесь только отправка."""
         drops = sorted(price_drops, key=get_drop_percent, reverse=True)
@@ -126,7 +127,7 @@ class NotificationManager:
             car_of=lambda drop: drop.car,
             format_one=format_price_drops_message,
             format_rest=lambda rest: format_multiple_price_drops_messages(rest, more=True),
-            silent=False,
+            silent=silent,
         )
 
     async def notify_new_car(self, cars: List[Car], message_thread_id: int) -> Dict[str, int]:
